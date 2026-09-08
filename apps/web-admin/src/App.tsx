@@ -245,6 +245,18 @@ export default function App() {
             <Users className="w-4 h-4" />
             <span>Therapists Master ({therapists.length})</span>
           </button>
+
+          <button 
+            onClick={() => setActiveTab('mobile-sim')}
+            className={`py-3.5 px-3 text-sm font-bold border-b-2 transition flex items-center space-x-2 rounded-t-lg ${
+              activeTab === 'mobile-sim' 
+                ? 'border-indigo-600 text-indigo-600 bg-indigo-50/80' 
+                : 'border-indigo-200 text-indigo-600 bg-indigo-50/40 hover:bg-indigo-100/60'
+            }`}
+          >
+            <Smartphone className="w-4 h-4 text-indigo-600" />
+            <span>📱 Mobile App Simulator</span>
+          </button>
         </div>
 
         <div className="text-xs text-slate-400 flex items-center space-x-2">
