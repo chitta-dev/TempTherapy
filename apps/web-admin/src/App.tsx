@@ -207,164 +207,201 @@ export default function App() {
   }) : null;
 
   return (
-    <div className="min-h-screen bg-slate-100 flex flex-col">
-      {/* TOP HEADER */}
-      <header className="bg-slate-900 text-white px-6 py-4 flex items-center justify-between shadow-md">
-        <div className="flex items-center space-x-3">
-          <div className="bg-emerald-500 p-2 rounded-xl text-slate-950 font-bold">
-            <Stethoscope className="w-6 h-6 text-white" />
+    <div className="min-h-screen bg-slate-50 flex flex-col font-sans text-slate-800 antialiased">
+      {/* TOP CLINICAL PORTAL HEADER */}
+      <header className="bg-white/95 backdrop-blur-md border-b border-slate-200/80 px-6 lg:px-8 py-3.5 flex items-center justify-between sticky top-0 z-30 shadow-xs">
+        <div className="flex items-center space-x-3.5">
+          <div className="bg-teal-700 p-2.5 rounded-2xl shadow-sm text-white flex items-center justify-center">
+            <Stethoscope className="w-5 h-5 text-white" />
           </div>
           <div>
-            <h1 className="text-xl font-bold tracking-tight">TherapyCare Dispatch</h1>
-            <p className="text-xs text-slate-400">In-Home Physiotherapy Operations Hub</p>
+            <div className="flex items-center space-x-2">
+              <h1 className="text-lg font-black tracking-tight text-slate-900">TherapyCare</h1>
+              <span className="bg-teal-50 border border-teal-200/80 text-teal-800 text-[10px] font-bold px-2 py-0.5 rounded-full">
+                CLINICAL PORTAL
+              </span>
+            </div>
+            <p className="text-xs text-slate-500 font-medium">In-Home Physiotherapy Dispatch & Triage Hub</p>
           </div>
         </div>
 
         {/* ROLE INDICATOR & ACTIONS */}
-        <div className="flex items-center space-x-4">
+        <div className="flex items-center space-x-3">
           <button 
             onClick={() => setActiveTab('new-request')}
-            className="flex items-center space-x-2 bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-lg font-medium text-sm transition shadow-sm"
+            className="flex items-center space-x-2 bg-teal-600 hover:bg-teal-700 active:bg-teal-800 text-white px-4 py-2.5 rounded-xl font-bold text-xs transition shadow-xs"
           >
             <PlusCircle className="w-4 h-4" />
-            <span>New Phone Request</span>
+            <span>+ Intake Phone Request</span>
           </button>
 
-          <div className="flex items-center space-x-3 bg-slate-800 px-3 py-1.5 rounded-lg border border-slate-700">
-            <div className="w-8 h-8 rounded-full bg-emerald-500 text-slate-950 font-bold flex items-center justify-center text-xs">
+          <div className="flex items-center space-x-3 bg-slate-100/80 hover:bg-slate-100 px-3.5 py-1.5 rounded-xl border border-slate-200/80 transition">
+            <div className="w-8 h-8 rounded-full bg-teal-700 text-white font-bold flex items-center justify-center text-xs shadow-xs">
               {currentUser.fullName.charAt(0)}
             </div>
-            <div className="text-left">
-              <p className="text-xs font-semibold text-white">{currentUser.fullName}</p>
-              <p className="text-[10px] text-emerald-400 uppercase tracking-wider">{currentUser.role.replace('_', ' ')}</p>
+            <div className="text-left hidden sm:block">
+              <p className="text-xs font-bold text-slate-900 leading-tight">{currentUser.fullName}</p>
+              <p className="text-[10px] text-teal-700 font-bold uppercase tracking-wider">{currentUser.role.replace('_', ' ')}</p>
             </div>
           </div>
         </div>
       </header>
 
       {/* MAIN NAVIGATION BAR */}
-      <nav className="bg-white border-b border-slate-200 px-6 flex items-center justify-between">
-        <div className="flex space-x-6">
+      <nav className="bg-white border-b border-slate-200/80 px-6 lg:px-8 py-2.5 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center space-x-1.5 bg-slate-100/90 p-1.5 rounded-2xl border border-slate-200/70">
           <button 
             onClick={() => setActiveTab('queue')}
-            className={`py-3.5 px-2 text-sm font-semibold border-b-2 transition flex items-center space-x-2 ${
+            className={`px-3.5 py-2 text-xs font-bold rounded-xl transition flex items-center space-x-2 ${
               activeTab === 'queue' 
-                ? 'border-emerald-600 text-emerald-600' 
-                : 'border-transparent text-slate-500 hover:text-slate-800'
+                ? 'bg-white text-teal-800 shadow-xs border border-slate-200/60' 
+                : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
             }`}
           >
-            <AlertCircle className="w-4 h-4" />
-            <span>Pending Triage Queue ({requests.filter(r => r.status === 'REQUEST_SUBMITTED').length})</span>
+            <AlertCircle className="w-3.5 h-3.5 text-amber-500" />
+            <span>Pending Triage</span>
+            <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
+              activeTab === 'queue' ? 'bg-teal-100 text-teal-800' : 'bg-slate-200 text-slate-700'
+            }`}>
+              {requests.filter(r => r.status === 'REQUEST_SUBMITTED').length}
+            </span>
           </button>
 
           <button 
             onClick={() => setActiveTab('appointments')}
-            className={`py-3.5 px-2 text-sm font-semibold border-b-2 transition flex items-center space-x-2 ${
+            className={`px-3.5 py-2 text-xs font-bold rounded-xl transition flex items-center space-x-2 ${
               activeTab === 'appointments' 
-                ? 'border-emerald-600 text-emerald-600' 
-                : 'border-transparent text-slate-500 hover:text-slate-800'
+                ? 'bg-white text-teal-800 shadow-xs border border-slate-200/60' 
+                : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
             }`}
           >
-            <Calendar className="w-4 h-4" />
-            <span>Active Dispatches ({appointments.length})</span>
+            <Calendar className="w-3.5 h-3.5 text-teal-600" />
+            <span>Active Dispatches</span>
+            <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
+              activeTab === 'appointments' ? 'bg-teal-100 text-teal-800' : 'bg-slate-200 text-slate-700'
+            }`}>
+              {appointments.length}
+            </span>
           </button>
 
           <button 
             onClick={() => setActiveTab('therapists')}
-            className={`py-3.5 px-2 text-sm font-semibold border-b-2 transition flex items-center space-x-2 ${
+            className={`px-3.5 py-2 text-xs font-bold rounded-xl transition flex items-center space-x-2 ${
               activeTab === 'therapists' 
-                ? 'border-emerald-600 text-emerald-600' 
-                : 'border-transparent text-slate-500 hover:text-slate-800'
+                ? 'bg-white text-teal-800 shadow-xs border border-slate-200/60' 
+                : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
             }`}
           >
-            <Users className="w-4 h-4" />
-            <span>Therapists Master ({therapists.length})</span>
+            <Users className="w-3.5 h-3.5 text-teal-600" />
+            <span>Therapist Roster</span>
+            <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
+              activeTab === 'therapists' ? 'bg-teal-100 text-teal-800' : 'bg-slate-200 text-slate-700'
+            }`}>
+              {therapists.length}
+            </span>
           </button>
 
           <button 
             onClick={() => setActiveTab('mobile-sim')}
-            className={`py-3.5 px-3 text-sm font-bold border-b-2 transition flex items-center space-x-2 rounded-t-lg ${
+            className={`px-3.5 py-2 text-xs font-bold rounded-xl transition flex items-center space-x-2 ${
               activeTab === 'mobile-sim' 
-                ? 'border-indigo-600 text-indigo-600 bg-indigo-50/80' 
-                : 'border-indigo-200 text-indigo-600 bg-indigo-50/40 hover:bg-indigo-100/60'
+                ? 'bg-teal-600 text-white shadow-xs' 
+                : 'text-teal-700 hover:bg-teal-50/80 hover:text-teal-900'
             }`}
           >
-            <Smartphone className="w-4 h-4 text-indigo-600" />
+            <Smartphone className="w-3.5 h-3.5" />
             <span>📱 Mobile App Simulator</span>
           </button>
         </div>
 
-        <div className="text-xs text-slate-400 flex items-center space-x-2">
+        <div className="flex items-center space-x-2 bg-emerald-50 border border-emerald-200/80 text-emerald-800 px-3 py-1.5 rounded-full text-xs font-semibold">
           <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-          <span>Live Dispatch Engine Connected</span>
+          <span>Live Clinical Dispatch Active</span>
         </div>
       </nav>
 
       {/* CONTENT AREA */}
-      <main className="flex-1 p-6 max-w-7xl mx-auto w-full">
+      <main className="flex-1 p-6 lg:p-8 max-w-7xl mx-auto w-full">
         {/* TAB 1: PENDING REQUESTS QUEUE */}
         {activeTab === 'queue' && (
           <div className="space-y-6">
             <div className="flex items-center justify-between">
               <div>
-                <h2 className="text-lg font-bold text-slate-900">Incoming Patient Requests</h2>
-                <p className="text-sm text-slate-500">Review patient clinical needs, assign verified therapists, and confirm visit time.</p>
+                <h2 className="text-xl font-black text-slate-900 tracking-tight">Incoming Patient Requests</h2>
+                <p className="text-xs text-slate-500 mt-0.5">Review patient clinical needs, assign verified therapists, and confirm visit time.</p>
               </div>
-              <button onClick={fetchData} className="text-xs text-emerald-600 hover:underline font-medium">Refresh Queue</button>
+              <button 
+                onClick={fetchData} 
+                className="inline-flex items-center space-x-1.5 text-xs font-bold text-teal-700 bg-teal-50 hover:bg-teal-100 border border-teal-200 px-3 py-1.5 rounded-xl transition shadow-xs"
+              >
+                <span>🔄 Refresh Queue</span>
+              </button>
             </div>
 
             {requests.filter(r => r.status === 'REQUEST_SUBMITTED').length === 0 ? (
-              <div className="bg-white rounded-xl p-12 text-center border border-slate-200 shadow-sm">
-                <CheckCircle2 className="w-12 h-12 text-emerald-500 mx-auto mb-3" />
-                <h3 className="text-base font-semibold text-slate-800">Dispatch Queue is Clear</h3>
-                <p className="text-sm text-slate-500 mt-1">All incoming patient requests have been scheduled and assigned.</p>
+              <div className="bg-white rounded-3xl p-12 text-center border border-slate-200/80 shadow-xs">
+                <div className="w-16 h-16 rounded-2xl bg-teal-50 text-teal-600 border border-teal-200/70 flex items-center justify-center mx-auto mb-3">
+                  <CheckCircle2 className="w-8 h-8 text-teal-600" />
+                </div>
+                <h3 className="text-base font-bold text-slate-900">Dispatch Queue is Clear</h3>
+                <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">All incoming patient requests have been triaged, scheduled, and assigned to licensed clinicians.</p>
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {requests.filter(r => r.status === 'REQUEST_SUBMITTED').map((req) => (
-                  <div key={req.id} className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm hover:border-emerald-500 transition space-y-4">
+                  <div key={req.id} className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-xs hover:shadow-md hover:border-teal-400 transition-all duration-200 space-y-4">
                     <div className="flex items-start justify-between">
                       <div>
-                        <span className="inline-block px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800">
-                          {req.category.name}
-                        </span>
-                        <h3 className="text-base font-bold text-slate-900 mt-1">{req.patient.fullName}</h3>
-                        <p className="text-xs text-slate-500 flex items-center space-x-1 mt-0.5">
-                          <Phone className="w-3 h-3" />
+                        <div className="flex items-center space-x-2">
+                          <span className="inline-block px-3 py-1 rounded-full text-xs font-bold bg-teal-50 text-teal-800 border border-teal-200/80">
+                            {req.category.name}
+                          </span>
+                          {req.urgency === 'URGENT' && (
+                            <span className="inline-block px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-rose-50 text-rose-700 border border-rose-200">
+                              🚨 URGENT
+                            </span>
+                          )}
+                        </div>
+                        <h3 className="text-base font-black text-slate-900 mt-1.5">{req.patient.fullName}</h3>
+                        <p className="text-xs text-slate-500 flex items-center space-x-1.5 mt-0.5 font-medium">
+                          <Phone className="w-3.5 h-3.5 text-teal-600" />
                           <span>{req.patient.phone}</span>
                         </p>
                       </div>
-                      <span className="text-xs font-mono bg-slate-100 text-slate-600 px-2 py-1 rounded">
+                      <span className="text-[11px] font-mono bg-slate-100 text-slate-600 px-2.5 py-1 rounded-lg border border-slate-200/60 font-semibold">
                         {req.id}
                       </span>
                     </div>
 
-                    <div className="bg-slate-50 p-3 rounded-lg text-xs space-y-1.5 text-slate-700">
-                      <p className="flex items-center space-x-1.5">
-                        <MapPin className="w-3.5 h-3.5 text-rose-500 shrink-0" />
-                        <span className="font-medium">{req.address.addressLine}, {req.address.city}</span>
+                    <div className="bg-slate-50/80 p-3.5 rounded-xl text-xs space-y-2 text-slate-700 border border-slate-100">
+                      <p className="flex items-center space-x-2">
+                        <MapPin className="w-4 h-4 text-rose-500 shrink-0" />
+                        <span className="font-medium text-slate-800">{req.address.addressLine}, {req.address.city}</span>
                       </p>
-                      <p className="flex items-center space-x-1.5">
-                        <Clock className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-                        <span>Preferred Window: <strong className="text-slate-900">{req.preferredTimeWindow}</strong></span>
+                      <p className="flex items-center space-x-2">
+                        <Clock className="w-4 h-4 text-amber-500 shrink-0" />
+                        <span>Preferred Window: <strong className="text-slate-900 font-bold">{req.preferredTimeWindow}</strong></span>
                       </p>
-                      <p className="flex items-center space-x-1.5">
-                        <Activity className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
-                        <span>Pain Focus: <strong>{req.painAreas.join(', ')}</strong></span>
+                      <p className="flex items-center space-x-2">
+                        <Activity className="w-4 h-4 text-teal-600 shrink-0" />
+                        <span>Target Pain Focus: <strong className="text-slate-900 font-bold">{req.painAreas.join(', ')}</strong></span>
                       </p>
                     </div>
 
-                    <p className="text-xs text-slate-600 italic">"{req.conditionDescription}"</p>
+                    <div className="bg-amber-50/60 border border-amber-200/60 p-2.5 rounded-xl">
+                      <p className="text-xs text-amber-900 italic font-medium">"{req.conditionDescription}"</p>
+                    </div>
 
                     <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
-                      <div className="text-xs text-slate-500">
-                        Est. Duration: <strong className="text-slate-800">{req.category.standardDurationMinutes} mins</strong>
+                      <div className="text-xs text-slate-500 font-medium">
+                        Est. Duration: <strong className="text-slate-800 font-bold">{req.category.standardDurationMinutes} mins</strong> (${req.category.basePriceUSD}.00)
                       </div>
                       <button 
                         onClick={() => setSelectedRequest(req)}
-                        className="bg-slate-900 hover:bg-emerald-600 text-white px-4 py-2 rounded-lg text-xs font-semibold transition"
+                        className="bg-teal-600 hover:bg-teal-700 active:bg-teal-800 text-white px-4 py-2 rounded-xl text-xs font-bold transition shadow-xs flex items-center space-x-1.5"
                       >
-                        Schedule & Assign PT
+                        <span>Schedule & Assign PT</span>
+                        <span>→</span>
                       </button>
                     </div>
                   </div>
@@ -378,63 +415,63 @@ export default function App() {
         {activeTab === 'appointments' && (
           <div className="space-y-6">
             <div>
-              <h2 className="text-lg font-bold text-slate-900">Active Dispatches & Confirmed Visits</h2>
-              <p className="text-sm text-slate-500">Live monitoring of therapist travel, arrival, session execution, and payments.</p>
+              <h2 className="text-xl font-black text-slate-900 tracking-tight">Active Dispatches & Confirmed Visits</h2>
+              <p className="text-xs text-slate-500 mt-0.5">Live monitoring of therapist travel, arrival, session execution, and payments.</p>
             </div>
 
             <div className="space-y-3">
               {appointments.map((apt) => (
-                <div key={apt.id} className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
-                  <div className="space-y-1">
+                <div key={apt.id} className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-xs hover:shadow-md transition-all duration-200 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                  <div className="space-y-1.5">
                     <div className="flex items-center space-x-2">
-                      <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${
-                        apt.status === 'ASSIGNED' ? 'bg-amber-100 text-amber-800' :
-                        apt.status === 'EN_ROUTE' ? 'bg-sky-100 text-sky-800 animate-pulse' :
-                        apt.status === 'ARRIVED' ? 'bg-indigo-100 text-indigo-800' :
-                        apt.status === 'IN_SESSION' ? 'bg-purple-100 text-purple-800' :
-                        'bg-emerald-100 text-emerald-800'
+                      <span className={`px-3 py-1 rounded-full text-xs font-bold ${
+                        apt.status === 'ASSIGNED' ? 'bg-amber-50 text-amber-800 border border-amber-200' :
+                        apt.status === 'EN_ROUTE' ? 'bg-teal-50 text-teal-800 border border-teal-200 animate-pulse' :
+                        apt.status === 'ARRIVED' ? 'bg-sky-50 text-sky-800 border border-sky-200' :
+                        apt.status === 'IN_SESSION' ? 'bg-purple-50 text-purple-800 border border-purple-200' :
+                        'bg-emerald-50 text-emerald-800 border border-emerald-200'
                       }`}>
                         {apt.status.replace('_', ' ')}
                       </span>
-                      <span className="text-xs text-slate-400">ID: {apt.id}</span>
+                      <span className="text-xs text-slate-400 font-mono font-medium">ID: {apt.id}</span>
                     </div>
-                    <h3 className="text-base font-bold text-slate-900">{apt.request?.category?.name || 'Physiotherapy Visit'}</h3>
-                    <p className="text-xs text-slate-600">
-                      Patient: <strong className="text-slate-900">{apt.patient?.fullName}</strong> ({apt.patient?.phone})
+                    <h3 className="text-base font-black text-slate-900">{apt.request?.category?.name || 'Physiotherapy Visit'}</h3>
+                    <p className="text-xs text-slate-600 font-medium">
+                      Patient: <strong className="text-slate-900 font-bold">{apt.patient?.fullName}</strong> ({apt.patient?.phone})
                     </p>
-                    <p className="text-xs text-slate-500 flex items-center space-x-1">
-                      <MapPin className="w-3 h-3 text-rose-500" />
+                    <p className="text-xs text-slate-500 flex items-center space-x-1.5">
+                      <MapPin className="w-3.5 h-3.5 text-rose-500" />
                       <span>{apt.request?.address?.addressLine}</span>
                     </p>
                   </div>
 
                   {/* THERAPIST & TIMING */}
-                  <div className="bg-slate-50 p-3 rounded-lg text-xs space-y-1 md:w-64">
-                    <p className="text-slate-500">Assigned Clinician:</p>
-                    <p className="font-semibold text-slate-900 flex items-center space-x-1.5">
-                      <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                  <div className="bg-slate-50/80 p-3.5 rounded-xl text-xs space-y-1.5 md:w-64 border border-slate-100">
+                    <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Assigned Clinician:</p>
+                    <p className="font-bold text-slate-900 flex items-center space-x-1.5">
+                      <ShieldCheck className="w-4 h-4 text-teal-600" />
                       <span>{apt.therapist?.user?.fullName || 'Assigned Therapist'}</span>
                     </p>
-                    <p className="text-slate-600 flex items-center space-x-1 mt-1">
-                      <Calendar className="w-3 h-3 text-slate-400" />
+                    <p className="text-slate-600 flex items-center space-x-1.5 mt-1 font-medium">
+                      <Calendar className="w-3.5 h-3.5 text-teal-600" />
                       <span>{new Date(apt.scheduledStart).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                     </p>
                   </div>
 
                   {/* FINANCIALS & OTP */}
-                  <div className="text-right space-y-1">
-                    <p className="text-xs text-slate-400">Total Fee</p>
-                    <p className="text-lg font-bold text-emerald-600">${apt.totalAmount}</p>
-                    <div className="flex items-center justify-end space-x-1.5">
-                      <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${
+                  <div className="text-right space-y-1.5">
+                    <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Total Fee</p>
+                    <p className="text-xl font-black text-teal-700">${apt.totalAmount}</p>
+                    <div className="flex items-center justify-end space-x-2">
+                      <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
                         apt.paymentStatus === 'CASH_COLLECTED' || apt.paymentStatus === 'PAID_ONLINE' 
-                          ? 'bg-emerald-100 text-emerald-700' 
-                          : 'bg-amber-100 text-amber-700'
+                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200' 
+                          : 'bg-amber-50 text-amber-700 border-amber-200'
                       }`}>
                         {apt.paymentStatus.replace('_', ' ')}
                       </span>
                       {apt.cashConfirmationOtp && (
-                        <span className="text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded font-mono">
+                        <span className="text-[10px] bg-slate-100 text-slate-700 px-2 py-0.5 rounded-lg font-mono font-bold border border-slate-200/60">
                           OTP: {apt.cashConfirmationOtp}
                         </span>
                       )}
@@ -450,33 +487,33 @@ export default function App() {
         {activeTab === 'therapists' && (
           <div className="space-y-6">
             <div>
-              <h2 className="text-lg font-bold text-slate-900">Physiotherapist Roster & Active Zones</h2>
-              <p className="text-sm text-slate-500">Certified care providers ready for home-visit dispatches.</p>
+              <h2 className="text-xl font-black text-slate-900 tracking-tight">Physiotherapist Roster & Active Coverage Zones</h2>
+              <p className="text-xs text-slate-500 mt-0.5">Certified care providers ready for in-home clinical dispatches.</p>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {therapists.map((pt) => (
-                <div key={pt.id} className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm flex items-start space-x-4">
-                  <img src={pt.user.avatarUrl} alt={pt.user.fullName} className="w-14 h-14 rounded-full object-cover border border-slate-200" />
-                  <div className="space-y-1 flex-1">
+                <div key={pt.id} className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-xs hover:shadow-md hover:border-teal-400 transition-all duration-200 flex items-start space-x-4">
+                  <img src={pt.user.avatarUrl} alt={pt.user.fullName} className="w-16 h-16 rounded-2xl object-cover border border-slate-200 shadow-xs shrink-0" />
+                  <div className="space-y-1.5 flex-1 min-w-0">
                     <div className="flex items-center justify-between">
-                      <h3 className="text-sm font-bold text-slate-900">{pt.user.fullName}</h3>
-                      <span className="text-xs font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded flex items-center space-x-0.5">
+                      <h3 className="text-sm font-black text-slate-900 truncate">{pt.user.fullName}</h3>
+                      <span className="text-xs font-bold text-amber-800 bg-amber-50 border border-amber-200/80 px-2 py-0.5 rounded-lg flex items-center space-x-1 shrink-0">
                         <span>★</span>
                         <span>{pt.rating}</span>
                       </span>
                     </div>
-                    <p className="text-xs text-slate-500">{pt.seniority.replace('_', ' ')} • {pt.yearsOfExperience} yrs exp</p>
-                    <p className="text-xs text-slate-600">License: <strong className="font-mono">{pt.licenseNumber}</strong></p>
-                    <div className="flex flex-wrap gap-1 pt-1.5">
+                    <p className="text-xs text-slate-500 font-medium">{pt.seniority.replace('_', ' ')} • {pt.yearsOfExperience} yrs clinical experience</p>
+                    <p className="text-xs text-slate-600">License: <strong className="font-mono text-slate-800">{pt.licenseNumber}</strong></p>
+                    <div className="flex flex-wrap gap-1 pt-1">
                       {pt.specializations.map(s => (
-                        <span key={s} className="text-[10px] bg-slate-100 text-slate-700 px-2 py-0.5 rounded">
+                        <span key={s} className="text-[10px] bg-teal-50 text-teal-800 border border-teal-200/60 px-2 py-0.5 rounded-md font-semibold">
                           {s}
                         </span>
                       ))}
                     </div>
-                    <p className="text-[11px] text-emerald-600 font-medium pt-1">
-                      Service Radius: Up to {pt.serviceRadiusKm} km from Base
+                    <p className="text-[11px] text-teal-700 font-bold bg-teal-50 border border-teal-200/70 px-2.5 py-1 rounded-lg inline-block mt-1">
+                      Coverage Radius: Up to {pt.serviceRadiusKm} km from Clinic Base
                     </p>
                   </div>
                 </div>
@@ -487,57 +524,61 @@ export default function App() {
 
         {/* TAB 4: NEW PHONE REQUEST MODAL/VIEW */}
         {activeTab === 'new-request' && (
-          <div className="max-w-2xl mx-auto bg-white rounded-2xl border border-slate-200 p-8 shadow-sm space-y-6">
+          <div className="max-w-2xl mx-auto bg-white rounded-3xl border border-slate-200/80 p-8 shadow-xs space-y-6">
             <div>
-              <h2 className="text-xl font-bold text-slate-900">Create Patient Request (Phone Call / Inquiry)</h2>
-              <p className="text-xs text-slate-500 mt-1">Take details from the caller to insert into the central dispatch queue.</p>
+              <div className="inline-flex items-center space-x-1.5 bg-teal-50 border border-teal-200/80 text-teal-800 text-[10px] font-bold px-2.5 py-0.5 rounded-full mb-2">
+                <Phone className="w-3 h-3" />
+                <span>FRONT DESK INTAKE</span>
+              </div>
+              <h2 className="text-xl font-black text-slate-900 tracking-tight">Create Patient Request (Phone Call / Inquiry)</h2>
+              <p className="text-xs text-slate-500 mt-1">Take details from caller to register in the central dispatch queue.</p>
             </div>
 
             <form onSubmit={handleCreatePhoneRequest} className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Patient Full Name *</label>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5">Patient Full Name *</label>
                   <input 
                     type="text" 
                     value={newPatientName} 
                     onChange={e => setNewPatientName(e.target.value)} 
                     placeholder="e.g. Robert Smith" 
-                    className="w-full text-sm p-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-emerald-500 outline-none" 
+                    className="w-full text-sm p-3 rounded-xl border border-slate-300 bg-slate-50/40 focus:bg-white focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none transition font-medium" 
                     required 
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Phone Number *</label>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5">Phone Number *</label>
                   <input 
                     type="text" 
                     value={newPatientPhone} 
                     onChange={e => setNewPatientPhone(e.target.value)} 
                     placeholder="+1 (555) 000-0000" 
-                    className="w-full text-sm p-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-emerald-500 outline-none" 
+                    className="w-full text-sm p-3 rounded-xl border border-slate-300 bg-slate-50/40 focus:bg-white focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none transition font-medium" 
                     required 
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Home Address & Landmark *</label>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">Home Address & Landmark *</label>
                 <input 
                   type="text" 
                   value={newAddress} 
                   onChange={e => setNewAddress(e.target.value)} 
                   placeholder="Street, Apt #, Landmark" 
-                  className="w-full text-sm p-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-emerald-500 outline-none" 
+                  className="w-full text-sm p-3 rounded-xl border border-slate-300 bg-slate-50/40 focus:bg-white focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none transition font-medium" 
                   required 
                 />
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Therapy Category</label>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5">Therapy Category</label>
                   <select 
                     value={newCategory} 
                     onChange={e => setNewCategory(e.target.value)} 
-                    className="w-full text-sm p-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-emerald-500 outline-none"
+                    className="w-full text-sm p-3 rounded-xl border border-slate-300 bg-slate-50/40 focus:bg-white focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none transition font-medium"
                   >
                     {THERAPY_CATEGORIES.map(c => (
                       <option key={c.id} value={c.id}>{c.name} (${c.basePriceUSD})</option>
@@ -545,11 +586,11 @@ export default function App() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Preferred Time Window</label>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5">Preferred Time Window</label>
                   <select 
                     value={newTimeWindow} 
                     onChange={e => setNewTimeWindow(e.target.value)} 
-                    className="w-full text-sm p-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-emerald-500 outline-none"
+                    className="w-full text-sm p-3 rounded-xl border border-slate-300 bg-slate-50/40 focus:bg-white focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none transition font-medium"
                   >
                     <option>Morning (9:00 AM - 12:00 PM)</option>
                     <option>Afternoon (1:00 PM - 4:00 PM)</option>
@@ -560,24 +601,24 @@ export default function App() {
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Symptoms / Condition Notes</label>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">Symptoms / Condition Notes</label>
                 <textarea 
                   value={newSymptoms} 
                   onChange={e => setNewSymptoms(e.target.value)} 
                   placeholder="Describe patient pain, mobility restriction, or post-surgery history..." 
-                  className="w-full text-sm p-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-emerald-500 outline-none h-20"
+                  className="w-full text-sm p-3 rounded-xl border border-slate-300 bg-slate-50/40 focus:bg-white focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none transition font-medium h-24"
                 ></textarea>
               </div>
 
-              <div className="flex items-center space-x-2">
+              <div className="flex items-center space-x-2.5 bg-slate-50 p-3 rounded-xl border border-slate-200/80">
                 <input 
                   type="checkbox" 
                   id="urgentCheck" 
                   checked={isUrgent} 
                   onChange={e => setIsUrgent(e.target.checked)} 
-                  className="rounded text-emerald-600 focus:ring-emerald-500 w-4 h-4" 
+                  className="rounded text-teal-600 focus:ring-teal-500 w-4 h-4 cursor-pointer" 
                 />
-                <label htmlFor="urgentCheck" className="text-xs font-medium text-slate-700">
+                <label htmlFor="urgentCheck" className="text-xs font-bold text-slate-800 cursor-pointer">
                   Mark as Urgent / Same-Day Dispatch (+$10)
                 </label>
               </div>
@@ -586,13 +627,13 @@ export default function App() {
                 <button 
                   type="button" 
                   onClick={() => setActiveTab('queue')} 
-                  className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-900"
+                  className="px-4 py-2.5 text-xs font-bold text-slate-600 hover:text-slate-900 rounded-xl transition"
                 >
                   Cancel
                 </button>
                 <button 
                   type="submit" 
-                  className="bg-emerald-600 hover:bg-emerald-500 text-white px-6 py-2.5 rounded-lg text-xs font-bold transition shadow-sm"
+                  className="bg-teal-600 hover:bg-teal-700 active:bg-teal-800 text-white px-6 py-3 rounded-xl text-xs font-bold transition shadow-xs"
                 >
                   Submit to Dispatch Queue
                 </button>
@@ -603,23 +644,31 @@ export default function App() {
 
         {/* MODAL: ASSIGN & SCHEDULE THERAPIST */}
         {selectedRequest && (
-          <div className="fixed inset-0 bg-slate-950/60 flex items-center justify-center p-4 z-50">
-            <div className="bg-white rounded-2xl max-w-lg w-full p-6 space-y-5 shadow-2xl border border-slate-100">
+          <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+            <div className="bg-white rounded-3xl max-w-lg w-full p-6 space-y-5 shadow-2xl border border-slate-100">
               <div className="flex items-start justify-between border-b border-slate-100 pb-3">
                 <div>
-                  <h3 className="text-base font-bold text-slate-900">Schedule & Assign Clinician</h3>
-                  <p className="text-xs text-slate-500">Patient: {selectedRequest.patient.fullName} • {selectedRequest.category.name}</p>
+                  <div className="inline-flex items-center space-x-1.5 bg-teal-50 border border-teal-200/80 text-teal-800 text-[10px] font-bold px-2 py-0.5 rounded-full mb-1">
+                    <span>CLINICAL DISPATCH</span>
+                  </div>
+                  <h3 className="text-base font-black text-slate-900">Schedule & Assign Clinician</h3>
+                  <p className="text-xs text-slate-500 font-medium">Patient: {selectedRequest.patient.fullName} • {selectedRequest.category.name}</p>
                 </div>
-                <button onClick={() => setSelectedRequest(null)} className="text-slate-400 hover:text-slate-600 text-sm font-bold">✕</button>
+                <button 
+                  onClick={() => setSelectedRequest(null)} 
+                  className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100 text-sm font-bold transition"
+                >
+                  ✕
+                </button>
               </div>
 
-              <div className="space-y-3 text-xs">
+              <div className="space-y-3.5 text-xs">
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Select Qualified Physiotherapist</label>
+                  <label className="block font-bold text-slate-700 mb-1.5">Select Qualified Physiotherapist</label>
                   <select 
                     value={selectedTherapistId} 
                     onChange={e => setSelectedTherapistId(e.target.value)}
-                    className="w-full text-xs p-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-emerald-500 outline-none"
+                    className="w-full text-xs p-3 rounded-xl border border-slate-300 bg-slate-50/40 focus:bg-white focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none font-medium"
                   >
                     {therapists.map(t => (
                       <option key={t.id} value={t.id}>
@@ -631,31 +680,31 @@ export default function App() {
 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block font-semibold text-slate-700 mb-1">Date</label>
+                    <label className="block font-bold text-slate-700 mb-1.5">Date</label>
                     <input 
                       type="text" 
                       value={scheduledDate} 
                       onChange={e => setScheduledDate(e.target.value)} 
-                      className="w-full p-2 rounded-lg border border-slate-300 text-xs" 
+                      className="w-full p-2.5 rounded-xl border border-slate-300 bg-slate-50/40 focus:bg-white focus:ring-2 focus:ring-teal-500 text-xs font-medium" 
                     />
                   </div>
                   <div>
-                    <label className="block font-semibold text-slate-700 mb-1">Time Slot</label>
+                    <label className="block font-bold text-slate-700 mb-1.5">Time Slot</label>
                     <input 
                       type="text" 
                       value={scheduledTime} 
                       onChange={e => setScheduledTime(e.target.value)} 
-                      className="w-full p-2 rounded-lg border border-slate-300 text-xs" 
+                      className="w-full p-2.5 rounded-xl border border-slate-300 bg-slate-50/40 focus:bg-white focus:ring-2 focus:ring-teal-500 text-xs font-medium" 
                     />
                   </div>
                 </div>
 
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Payment Collection Mode</label>
+                  <label className="block font-bold text-slate-700 mb-1.5">Payment Collection Mode</label>
                   <select 
                     value={paymentMode} 
                     onChange={e => setPaymentMode(e.target.value as any)}
-                    className="w-full text-xs p-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-emerald-500 outline-none"
+                    className="w-full text-xs p-3 rounded-xl border border-slate-300 bg-slate-50/40 focus:bg-white focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none font-medium"
                   >
                     <option value="CASH_ON_SERVICE">Cash on Service (Pay at Home)</option>
                     <option value="ONLINE_CARD">Online Pre-Payment (Card / Apple Pay)</option>
@@ -664,21 +713,21 @@ export default function App() {
 
                 {/* AUTOMATED FEE CALCULATION BREAKDOWN */}
                 {feeEstimate && (
-                  <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3.5 space-y-1 text-slate-800">
-                    <p className="font-bold text-emerald-900 mb-1">Automated Fee Calculation:</p>
-                    <div className="flex justify-between text-[11px]">
+                  <div className="bg-teal-50/80 border border-teal-200/80 rounded-2xl p-4 space-y-1.5 text-slate-800">
+                    <p className="font-bold text-teal-900 mb-1 text-xs">Automated Fee Calculation:</p>
+                    <div className="flex justify-between text-[11px] font-medium">
                       <span>Base Category Fee ({selectedRequest.category.name}):</span>
                       <span>${feeEstimate.baseAmount}</span>
                     </div>
-                    <div className="flex justify-between text-[11px]">
+                    <div className="flex justify-between text-[11px] font-medium">
                       <span>Seniority Surcharge ({selectedTherapistObj.seniority}):</span>
                       <span>+${feeEstimate.senioritySurcharge}</span>
                     </div>
-                    <div className="flex justify-between text-[11px]">
+                    <div className="flex justify-between text-[11px] font-medium">
                       <span>Travel Surcharge (4.8 km):</span>
                       <span>+${feeEstimate.travelAmount}</span>
                     </div>
-                    <div className="flex justify-between text-xs font-bold text-emerald-900 border-t border-emerald-200 pt-1 mt-1">
+                    <div className="flex justify-between text-xs font-bold text-teal-900 border-t border-teal-200/80 pt-1.5 mt-1.5">
                       <span>Total Amount Payable:</span>
                       <span>${feeEstimate.totalAmount}</span>
                     </div>
@@ -686,18 +735,18 @@ export default function App() {
                 )}
               </div>
 
-              <div className="flex justify-end space-x-2 pt-2">
+              <div className="flex justify-end space-x-2.5 pt-2">
                 <button 
                   onClick={() => setSelectedRequest(null)} 
-                  className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-900"
+                  className="px-4 py-2 text-xs font-bold text-slate-600 hover:text-slate-900 rounded-xl transition"
                 >
                   Cancel
                 </button>
                 <button 
                   onClick={handleAssignTherapist} 
-                  className="bg-emerald-600 hover:bg-emerald-500 text-white px-5 py-2 rounded-lg text-xs font-bold transition shadow-sm"
+                  className="bg-teal-600 hover:bg-teal-700 active:bg-teal-800 text-white px-5 py-2.5 rounded-xl text-xs font-bold transition shadow-xs"
                 >
-                  Approve & Dispatch
+                  Approve & Dispatch Clinician
                 </button>
               </div>
             </div>
@@ -708,12 +757,12 @@ export default function App() {
         {activeTab === 'mobile-sim' && (
           <div className="max-w-4xl mx-auto space-y-6">
             <div className="text-center">
-              <div className="inline-flex items-center space-x-2 bg-indigo-100 text-indigo-800 px-3 py-1 rounded-full text-xs font-bold mb-2">
-                <Smartphone className="w-3.5 h-3.5" />
+              <div className="inline-flex items-center space-x-2 bg-teal-50 border border-teal-200/80 text-teal-800 px-3.5 py-1 rounded-full text-xs font-bold mb-2">
+                <Smartphone className="w-3.5 h-3.5 text-teal-700" />
                 <span>Interactive Mobile Experience</span>
               </div>
               <h2 className="text-2xl font-black text-slate-900 tracking-tight">📱 Mobile App Simulator (Patient & Clinician)</h2>
-              <p className="text-xs text-slate-500 mt-1 max-w-lg mx-auto">
+              <p className="text-xs text-slate-500 mt-1 max-w-lg mx-auto font-medium">
                 Test the complete in-home booking lifecycle with interactive date/time pickers, pain map chips, VAS scale, and live status dispatch!
               </p>
             </div>
@@ -1245,12 +1294,12 @@ export default function App() {
                       /* CLINICIAN COCKPIT VIEW IN SIMULATOR */
                       <div className="space-y-3">
                         <div className="bg-white p-3 rounded-2xl border border-slate-200 shadow-xs flex items-center space-x-2.5">
-                          <div className="w-9 h-9 rounded-full bg-sky-600 flex items-center justify-center font-bold text-white text-xs">
+                          <div className="w-9 h-9 rounded-full bg-teal-700 flex items-center justify-center font-bold text-white text-xs shadow-xs">
                             SJ
                           </div>
                           <div>
                             <p className="font-bold text-slate-900 text-xs">Dr. Sarah Jenkins, PT, DPT</p>
-                            <p className="text-[9px] text-sky-600">Senior Orthopedic Clinician • NY Board</p>
+                            <p className="text-[9px] text-teal-700 font-bold">Senior Orthopedic Clinician • NY Board</p>
                           </div>
                         </div>
 
@@ -1258,13 +1307,13 @@ export default function App() {
                           <div className="bg-white rounded-2xl p-3 border border-slate-200 shadow-xs space-y-2.5">
                             <div className="flex justify-between items-center">
                               <span className="font-bold text-xs text-slate-900">Assigned Home Visit</span>
-                              <span className="text-[9px] bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded font-mono">10:00 AM</span>
+                              <span className="text-[9px] bg-teal-50 text-teal-800 px-2 py-0.5 rounded-full font-bold border border-teal-200">10:00 AM</span>
                             </div>
                             <p className="text-[11px] text-slate-700">Patient: <strong className="text-slate-900">{appointments[0].patient?.fullName}</strong></p>
                             <p className="text-[10px] text-slate-500">📍 {appointments[0].request?.address?.addressLine}</p>
 
                             <div className="pt-2 border-t border-slate-100 space-y-1.5">
-                              <p className="text-[9px] font-bold text-slate-400 uppercase">Update Visit Status:</p>
+                              <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Update Visit Status:</p>
                               <div className="grid grid-cols-2 gap-1.5">
                                 <button 
                                   onClick={async () => {
@@ -1275,7 +1324,7 @@ export default function App() {
                                     });
                                     fetchData();
                                   }}
-                                  className="bg-sky-600 hover:bg-sky-500 text-white py-1.5 rounded-lg text-[10px] font-bold"
+                                  className="bg-teal-600 hover:bg-teal-700 text-white py-1.5 rounded-xl text-[10px] font-bold transition shadow-xs"
                                 >
                                   🚗 1. On The Way
                                 </button>
@@ -1288,7 +1337,7 @@ export default function App() {
                                     });
                                     fetchData();
                                   }}
-                                  className="bg-indigo-600 hover:bg-indigo-500 text-white py-1.5 rounded-lg text-[10px] font-bold"
+                                  className="bg-emerald-600 hover:bg-emerald-700 text-white py-1.5 rounded-xl text-[10px] font-bold transition shadow-xs"
                                 >
                                   🏡 2. Arrived
                                 </button>
@@ -1301,7 +1350,7 @@ export default function App() {
                                     });
                                     fetchData();
                                   }}
-                                  className="bg-purple-600 hover:bg-purple-500 text-white py-1.5 rounded-lg text-[10px] font-bold"
+                                  className="bg-teal-800 hover:bg-teal-900 text-white py-1.5 rounded-xl text-[10px] font-bold transition shadow-xs"
                                 >
                                   🩺 3. In Session
                                 </button>
@@ -1314,7 +1363,7 @@ export default function App() {
                                     });
                                     fetchData();
                                   }}
-                                  className="bg-teal-600 hover:bg-teal-500 text-white py-1.5 rounded-lg text-[10px] font-bold"
+                                  className="bg-emerald-700 hover:bg-emerald-800 text-white py-1.5 rounded-xl text-[10px] font-bold transition shadow-xs"
                                 >
                                   ✅ 4. Complete
                                 </button>
