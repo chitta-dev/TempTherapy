@@ -10,7 +10,8 @@ import {
   SafeAreaView, 
   StatusBar,
   Platform,
-  Modal
+  Modal,
+  NativeModules
 } from 'react-native';
 import { 
   THERAPY_CATEGORIES, 
@@ -18,7 +19,25 @@ import {
   Appointment 
 } from './src/shared';
 
-const API_BASE = 'http://localhost:4000/api';
+// Dynamically resolve local development PC IP for physical devices running Expo Go
+const getHostAddress = () => {
+  try {
+    const scriptURL = NativeModules.SourceCode?.scriptURL;
+    if (scriptURL) {
+      const match = scriptURL.match(/^https?:\/\/([^:/]+)/);
+      if (match && match[1] && match[1] !== 'localhost' && match[1] !== '127.0.0.1') {
+        return match[1];
+      }
+    }
+  } catch {
+    // Fallback if NativeModules is not ready
+  }
+  return '192.168.68.199';
+};
+
+const HOST_IP = getHostAddress();
+const API_BASE = `http://${HOST_IP}:4000/api`;
+const HUB_URL = `http://${HOST_IP}:4000/hubs/therapy`;
 
 // Date Options (Next 6 Days)
 const DATE_OPTIONS = [
@@ -183,7 +202,7 @@ export default function App() {
 
     // SignalR Real-Time Telemetry to .NET Core Backend
     const connection = new signalR.HubConnectionBuilder()
-      .withUrl('http://localhost:4000/hubs/therapy')
+      .withUrl(HUB_URL)
       .withAutomaticReconnect()
       .configureLogging(signalR.LogLevel.Warning)
       .build();
