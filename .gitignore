@@ -8,3 +8,14 @@ build/
 *.log
 .DS_Store
 Thumbs.db
+
+# .NET Core & EF Core
+bin/
+obj/
+*.db
+*.db-*
+*.user
+*.suo
+appsettings.*.json
+!appsettings.Development.json
+!appsettings.json

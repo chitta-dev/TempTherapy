@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import * as signalR from '@microsoft/signalr';
 import { 
   StyleSheet, 
   Text, 
@@ -167,9 +168,10 @@ export default function App() {
     try {
       const res = await fetch(`${API_BASE}/appointments`);
       const data = await res.json();
-      if (data.success && data.appointments.length > 0) {
-        setActiveAppointment(data.appointments[0]);
-        setPtStatus(data.appointments[0].status);
+      const aptList = Array.isArray(data) ? data : (data.appointments || []);
+      if (aptList.length > 0) {
+        setActiveAppointment(aptList[0]);
+        setPtStatus(aptList[0].status);
       }
     } catch (e) {
       console.log('Using local state mode');
@@ -178,6 +180,37 @@ export default function App() {
 
   useEffect(() => {
     refreshActiveData();
+
+    // SignalR Real-Time Telemetry to .NET Core Backend
+    const connection = new signalR.HubConnectionBuilder()
+      .withUrl('http://localhost:4000/hubs/therapy')
+      .withAutomaticReconnect()
+      .configureLogging(signalR.LogLevel.Warning)
+      .build();
+
+    connection.start()
+      .then(() => {
+        connection.invoke('JoinPatientChannel', 'usr_patient_1');
+      })
+      .catch(err => {
+        console.log('[SignalR Mobile] Connection notice:', err);
+      });
+
+    connection.on('ReceiveAppointmentAssigned', (apt: any) => {
+      setActiveAppointment(apt);
+      setPtStatus(apt.status);
+      showToast('SUCCESS', '⚡ Clinician Dispatched!', 'Dr. Sarah Jenkins has been assigned to your home visit.');
+      setActiveTab('status');
+    });
+
+    connection.on('ReceiveVisitStatusUpdated', (payload: any) => {
+      setPtStatus(payload.status);
+      showToast('INFO', '🚗 Visit Progress Update', `Your therapist is now: ${payload.status}`);
+    });
+
+    return () => {
+      connection.stop();
+    };
   }, [roleMode]);
 
   // Toggle pain area selection

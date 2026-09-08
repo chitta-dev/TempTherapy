@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import * as signalR from '@microsoft/signalr';
 import { 
   Users, 
   Calendar, 
@@ -13,9 +14,9 @@ import {
   Activity, 
   DollarSign, 
   Search, 
-  Filter,
+  Filter, 
   LogOut,
-  Stethoscope, Smartphone, Send, Check, X
+  Stethoscope, Smartphone, Send, Check, X, Zap
 } from 'lucide-react';
 import { 
   THERAPY_CATEGORIES, 
@@ -44,6 +45,7 @@ export default function App() {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [therapists, setTherapists] = useState<TherapistProfile[]>([]);
   const [loading, setLoading] = useState(false);
+  const [signalrConnected, setSignalrConnected] = useState(false);
 
   // Modal State for Dispatch / Assignment
   const [selectedRequest, setSelectedRequest] = useState<ServiceRequest | null>(null);
@@ -108,12 +110,14 @@ export default function App() {
       const aptData = await aptRes.json();
       const ptData = await ptRes.json();
 
-      if (reqData.success) setRequests(reqData.requests);
-      if (aptData.success) setAppointments(aptData.appointments);
-      if (ptData.success) {
-        setTherapists(ptData.therapists);
-        if (ptData.therapists.length > 0) setSelectedTherapistId(ptData.therapists[0].id);
-      }
+      const reqList = Array.isArray(reqData) ? reqData : (reqData.requests || []);
+      const aptList = Array.isArray(aptData) ? aptData : (aptData.appointments || []);
+      const ptList = Array.isArray(ptData) ? ptData : (ptData.therapists || []);
+
+      setRequests(reqList);
+      setAppointments(aptList);
+      setTherapists(ptList);
+      if (ptList.length > 0 && !selectedTherapistId) setSelectedTherapistId(ptList[0].id);
     } catch (err) {
       console.warn('Backend API connection fallback, using local state.');
     } finally {
@@ -123,6 +127,51 @@ export default function App() {
 
   useEffect(() => {
     fetchData();
+
+    // Configure Real-time SignalR Connection to .NET Core Backend
+    const connection = new signalR.HubConnectionBuilder()
+      .withUrl('http://localhost:4000/hubs/therapy')
+      .withAutomaticReconnect()
+      .configureLogging(signalR.LogLevel.Warning)
+      .build();
+
+    connection.start()
+      .then(() => {
+        setSignalrConnected(true);
+        connection.invoke('JoinDispatchDesk');
+      })
+      .catch(err => {
+        console.warn('[SignalR] Connection notice:', err);
+      });
+
+    connection.onreconnected(() => {
+      setSignalrConnected(true);
+      connection.invoke('JoinDispatchDesk');
+      fetchData();
+    });
+
+    connection.onclose(() => {
+      setSignalrConnected(false);
+    });
+
+    connection.on('ReceiveNewRequest', (newReq: any) => {
+      fetchData();
+      showToast(`⚡ Real-time alert: New intake request for ${newReq.targetArea || 'Evaluation'}!`, 'info');
+    });
+
+    connection.on('ReceiveAppointmentAssigned', (apt: any) => {
+      fetchData();
+      showToast(`⚡ Real-time dispatch: Clinician assigned to Apt #${apt.id?.slice(-4)}!`, 'success');
+    });
+
+    connection.on('ReceiveVisitStatusUpdated', (payload: any) => {
+      fetchData();
+      showToast(`🚗 Real-time update: Visit #${payload.appointmentId?.slice(-4)} is now ${payload.status}!`, 'info');
+    });
+
+    return () => {
+      connection.stop();
+    };
   }, []);
 
   // Handle Dispatch / Assignment
@@ -263,7 +312,7 @@ export default function App() {
             <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
               activeTab === 'queue' ? 'bg-teal-100 text-teal-800' : 'bg-slate-200 text-slate-700'
             }`}>
-              {requests.filter(r => r.status === 'REQUEST_SUBMITTED').length}
+              {requests.filter(r => r.status === 'REQUEST_SUBMITTED' || r.status === 'PENDING_TRIAGE').length}
             </span>
           </button>
 
@@ -314,9 +363,15 @@ export default function App() {
           </button>
         </div>
 
-        <div className="flex items-center space-x-2 bg-emerald-50 border border-emerald-200/80 text-emerald-800 px-3 py-1.5 rounded-full text-xs font-semibold">
-          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-          <span>Live Clinical Dispatch Active</span>
+        <div className="flex items-center space-x-2.5">
+          <div className={`flex items-center space-x-2 px-3.5 py-1.5 rounded-full text-xs font-bold border transition shadow-2xs ${
+            signalrConnected 
+              ? 'bg-emerald-50 border-emerald-200/90 text-emerald-800' 
+              : 'bg-amber-50 border-amber-200/90 text-amber-800'
+          }`}>
+            <span className={`w-2 h-2 rounded-full ${signalrConnected ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`}></span>
+            <span>{signalrConnected ? '⚡ .NET Core SignalR Live' : 'Connecting Real-Time...'}</span>
+          </div>
         </div>
       </nav>
 
@@ -338,7 +393,7 @@ export default function App() {
               </button>
             </div>
 
-            {requests.filter(r => r.status === 'REQUEST_SUBMITTED').length === 0 ? (
+            {requests.filter(r => r.status === 'REQUEST_SUBMITTED' || r.status === 'PENDING_TRIAGE').length === 0 ? (
               <div className="bg-white rounded-3xl p-12 text-center border border-slate-200/80 shadow-xs">
                 <div className="w-16 h-16 rounded-2xl bg-teal-50 text-teal-600 border border-teal-200/70 flex items-center justify-center mx-auto mb-3">
                   <CheckCircle2 className="w-8 h-8 text-teal-600" />
@@ -348,7 +403,7 @@ export default function App() {
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {requests.filter(r => r.status === 'REQUEST_SUBMITTED').map((req) => (
+                {requests.filter(r => r.status === 'REQUEST_SUBMITTED' || r.status === 'PENDING_TRIAGE').map((req) => (
                   <div key={req.id} className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-xs hover:shadow-md hover:border-teal-400 transition-all duration-200 space-y-4">
                     <div className="flex items-start justify-between">
                       <div>
