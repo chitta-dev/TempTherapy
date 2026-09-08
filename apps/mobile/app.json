@@ -4,23 +4,13 @@
     "slug": "therapy-care",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
-    "splash": {
-      "backgroundColor": "#0f172a"
-    },
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.therapycare.app"
     },
     "android": {
-      "package": "com.therapycare.app",
-      "adaptiveIcon": {
-        "backgroundColor": "#0f172a"
-      }
-    },
-    "web": {
-      "favicon": "./assets/favicon.png"
+      "package": "com.therapycare.app"
     }
   }
 }
