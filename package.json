@@ -1,0 +1,15 @@
+{
+  "name": "therapy-platform-root",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "start:backend": "npm --prefix apps/backend run dev",
+    "start:web": "npm --prefix apps/web-admin run dev",
+    "start:mobile": "npm --prefix apps/mobile start",
+    "build:all": "npm --prefix packages/shared run build && npm --prefix apps/backend run build && npm --prefix apps/web-admin run build"
+  }
+}
