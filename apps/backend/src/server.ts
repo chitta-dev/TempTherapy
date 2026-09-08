@@ -10,7 +10,7 @@ import {
   AppointmentStatus,
   PaymentMode,
   PaymentStatus 
-} from '../../packages/shared/src/index';
+} from '../../../packages/shared/src/index';
 
 const app = express();
 const PORT = process.env.PORT || 4000;
