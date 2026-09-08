@@ -64,15 +64,30 @@ export default function App() {
 
   // Mobile App Simulator Interactive State
   const [simRole, setSimRole] = useState<'PATIENT' | 'THERAPIST'>('PATIENT');
+  const [simActiveTab, setSimActiveTab] = useState<'request' | 'status' | 'profile'>('request');
   const [simCategory, setSimCategory] = useState(THERAPY_CATEGORIES[0]);
   const [simDate, setSimDate] = useState({ id: 'tom', day: 'Tomorrow', date: 'Sep 10' });
   const [simPeriod, setSimPeriod] = useState<'morning' | 'afternoon' | 'evening'>('morning');
   const [simTimeSlot, setSimTimeSlot] = useState('10:45 AM');
   const [simPainAreas, setSimPainAreas] = useState<string[]>(['Lower Back', 'Sciatic Nerve']);
   const [simPainSeverity, setSimPainSeverity] = useState<number>(6);
-  const [simAddress, setSimAddress] = useState('742 Evergreen Terrace, Apt 4B, New York');
   const [simPaymentMode, setSimPaymentMode] = useState<'CASH' | 'CARD'>('CASH');
   const [simBookSuccess, setSimBookSuccess] = useState(false);
+  const [simProfile, setSimProfile] = useState({
+    fullName: 'Johnathan Doe',
+    phone: '+1 (555) 349-2810',
+    email: 'johnathan.doe@gmail.com',
+    age: '38',
+    gender: 'Male',
+    bloodGroup: 'O+',
+    conditions: ['Hypertension', 'Spinal Surgery History'] as string[],
+    emergencyName: 'Eleanor Doe',
+    emergencyRelation: 'Spouse',
+    emergencyPhone: '+1 (555) 839-2019',
+    primaryAddress: '742 Evergreen Terrace, Apt 4B, New York',
+    entryNotes: 'Door buzzer #402. Elevator on left.'
+  });
+  const [simProfileSavedNotice, setSimProfileSavedNotice] = useState(false);
 
   // Fetch initial data
   const fetchData = async () => {
@@ -709,28 +724,28 @@ export default function App() {
                 </div>
 
                 {/* APP VIEWPORT */}
-                <div className="bg-slate-900 rounded-[36px] overflow-hidden text-slate-100 min-h-[640px] max-h-[640px] flex flex-col">
+                <div className="bg-slate-50 rounded-[36px] overflow-hidden text-slate-800 min-h-[640px] max-h-[640px] flex flex-col border border-slate-200">
                   {/* TOP HEADER */}
-                  <div className="bg-slate-950 px-4 py-3 border-b border-slate-800 flex items-center justify-between">
+                  <div className="bg-white px-4 py-3 border-b border-slate-200 flex items-center justify-between shadow-xs">
                     <div className="flex items-center space-x-2">
-                      <div className="w-7 h-7 rounded-lg bg-emerald-600 flex items-center justify-center text-xs">
+                      <div className="w-7 h-7 rounded-lg bg-teal-600 flex items-center justify-center text-xs text-white">
                         🩺
                       </div>
                       <div>
                         <div className="flex items-center space-x-1.5">
-                          <span className="font-extrabold text-xs text-white">TherapyCare</span>
-                          <span className="bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[8px] font-bold px-1 rounded">HOME</span>
+                          <span className="font-extrabold text-xs text-slate-900">TherapyCare</span>
+                          <span className="bg-teal-50 text-teal-700 border border-teal-200 text-[8px] font-bold px-1 rounded">HOME CARE</span>
                         </div>
-                        <p className="text-[9px] text-slate-400">Certified In-Home Physio</p>
+                        <p className="text-[9px] text-slate-500">Certified Home Physio</p>
                       </div>
                     </div>
 
                     {/* ROLE TOGGLE */}
-                    <div className="bg-slate-800 p-0.5 rounded-lg flex border border-slate-700">
+                    <div className="bg-slate-100 p-0.5 rounded-lg flex border border-slate-200">
                       <button 
                         onClick={() => setSimRole('PATIENT')}
                         className={`text-[10px] font-bold px-2 py-1 rounded-md transition ${
-                          simRole === 'PATIENT' ? 'bg-emerald-600 text-white' : 'text-slate-400 hover:text-white'
+                          simRole === 'PATIENT' ? 'bg-teal-600 text-white shadow-xs' : 'text-slate-500 hover:text-slate-800'
                         }`}
                       >
                         Patient
@@ -738,7 +753,7 @@ export default function App() {
                       <button 
                         onClick={() => setSimRole('THERAPIST')}
                         className={`text-[10px] font-bold px-2 py-1 rounded-md transition ${
-                          simRole === 'THERAPIST' ? 'bg-emerald-600 text-white' : 'text-slate-400 hover:text-white'
+                          simRole === 'THERAPIST' ? 'bg-teal-600 text-white shadow-xs' : 'text-slate-500 hover:text-slate-800'
                         }`}
                       >
                         Clinician
@@ -746,309 +761,501 @@ export default function App() {
                     </div>
                   </div>
 
+                  {simRole === 'PATIENT' && (
+                    <div className="bg-white border-b border-slate-200 flex text-[11px] font-semibold text-slate-500">
+                      <button 
+                        onClick={() => setSimActiveTab('request')}
+                        className={`flex-1 py-2 text-center border-b-2 transition ${
+                          simActiveTab === 'request' ? 'border-teal-600 text-teal-700 font-bold bg-teal-50/40' : 'border-transparent hover:text-slate-800'
+                        }`}
+                      >
+                        ✨ Book Visit
+                      </button>
+                      <button 
+                        onClick={() => setSimActiveTab('status')}
+                        className={`flex-1 py-2 text-center border-b-2 transition ${
+                          simActiveTab === 'status' ? 'border-teal-600 text-teal-700 font-bold bg-teal-50/40' : 'border-transparent hover:text-slate-800'
+                        }`}
+                      >
+                        📍 Live Status
+                      </button>
+                      <button 
+                        onClick={() => setSimActiveTab('profile')}
+                        className={`flex-1 py-2 text-center border-b-2 transition ${
+                          simActiveTab === 'profile' ? 'border-teal-600 text-teal-700 font-bold bg-teal-50/40' : 'border-transparent hover:text-slate-800'
+                        }`}
+                      >
+                        👤 Personal Info
+                      </button>
+                    </div>
+                  )}
+
                   {/* SCROLLABLE VIEWPORT CONTENT */}
-                  <div className="flex-1 overflow-y-auto p-3.5 space-y-3.5 text-xs">
+                  <div className="flex-1 overflow-y-auto p-3.5 space-y-3 text-xs bg-slate-50">
                     {simRole === 'PATIENT' ? (
                       <>
-                        {/* GREETING CARD */}
-                        <div className="bg-slate-800/80 rounded-2xl p-3 border border-slate-700/60 flex items-center justify-between">
-                          <div>
-                            <p className="font-bold text-slate-100 text-xs">Hello, Johnathan 👋</p>
-                            <p className="text-[10px] text-slate-400">Need in-home physiotherapy today?</p>
-                          </div>
-                          <span className="bg-emerald-500/20 text-emerald-400 text-[10px] font-bold px-2 py-0.5 rounded-full border border-emerald-500/30">
-                            🛡️ Verified
-                          </span>
-                        </div>
-
-                        {/* 1. SELECT THERAPY SPECIALTY */}
-                        <div className="bg-slate-800/60 rounded-2xl p-3 border border-slate-700/60 space-y-2">
-                          <div className="flex justify-between items-center">
-                            <span className="font-bold text-slate-200 text-xs">1. Select Specialty</span>
-                            <span className="text-[10px] text-emerald-400 font-semibold">45-60 min care</span>
-                          </div>
-
-                          <div className="grid grid-cols-2 gap-2">
-                            {THERAPY_CATEGORIES.slice(0, 4).map((cat) => (
-                              <button
-                                key={cat.id}
-                                onClick={() => setSimCategory(cat)}
-                                className={`p-2 rounded-xl text-left border transition ${
-                                  simCategory.id === cat.id 
-                                    ? 'border-emerald-500 bg-emerald-950/40 text-white shadow-sm' 
-                                    : 'border-slate-700 bg-slate-800/40 text-slate-300 hover:border-slate-600'
-                                }`}
-                              >
-                                <div className="flex justify-between items-center text-sm mb-1">
-                                  <span>{cat.id === 'cat_ortho' ? '🦴' : cat.id === 'cat_post_op' ? '🩹' : cat.id === 'cat_neuro' ? '🧠' : '⚡'}</span>
-                                  <span className="text-[10px] font-bold bg-slate-700 px-1.5 py-0.5 rounded text-emerald-400">${cat.basePriceUSD}</span>
-                                </div>
-                                <p className="font-bold text-[11px] leading-tight truncate">{cat.name}</p>
-                                <p className="text-[9px] text-slate-400 mt-0.5">⏱ {cat.standardDurationMinutes} mins</p>
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-
-                        {/* 2. INTERACTIVE PAIN AREA & VAS SCALE */}
-                        <div className="bg-slate-800/60 rounded-2xl p-3 border border-slate-700/60 space-y-2">
-                          <span className="font-bold text-slate-200 text-xs">2. Pain Focus & VAS Severity</span>
-                          
-                          {/* PAIN CHIPS */}
-                          <div className="flex flex-wrap gap-1.5">
-                            {['🦴 Lower Back', '🧣 Neck', '🦵 Knee', '🏊 Shoulder', '⚡ Sciatica', '🚶 Hip'].map((chip) => {
-                              const isPicked = simPainAreas.includes(chip);
-                              return (
-                                <button
-                                  key={chip}
-                                  onClick={() => {
-                                    if (isPicked) {
-                                      if (simPainAreas.length > 1) setSimPainAreas(simPainAreas.filter(p => p !== chip));
-                                    } else {
-                                      setSimPainAreas([...simPainAreas, chip]);
-                                    }
-                                  }}
-                                  className={`px-2.5 py-1 rounded-lg text-[10px] font-semibold border transition ${
-                                    isPicked ? 'bg-emerald-600 border-emerald-500 text-white' : 'bg-slate-800 border-slate-700 text-slate-300'
-                                  }`}
-                                >
-                                  {chip}
-                                </button>
-                              );
-                            })}
-                          </div>
-
-                          {/* VAS 1-10 BUTTONS */}
-                          <div className="bg-slate-900/80 p-2.5 rounded-xl border border-slate-800 space-y-1.5">
-                            <div className="flex justify-between items-center text-[10px]">
-                              <span className="text-slate-400">Clinical Pain Scale (VAS):</span>
-                              <span className="font-bold text-amber-400">{simPainSeverity} / 10 (Moderate)</span>
-                            </div>
-                            <div className="flex justify-between">
-                              {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((num) => (
-                                <button
-                                  key={num}
-                                  onClick={() => setSimPainSeverity(num)}
-                                  className={`w-6 h-6 rounded-full text-[10px] font-bold transition flex items-center justify-center ${
-                                    simPainSeverity === num 
-                                      ? 'bg-amber-500 text-slate-950 font-black shadow' 
-                                      : 'bg-slate-800 text-slate-400 hover:text-white'
-                                  }`}
-                                >
-                                  {num}
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* 3. INTERACTIVE DATE & TIME PICKER (NO RAW TEXT) */}
-                        <div className="bg-slate-800/60 rounded-2xl p-3 border border-slate-700/60 space-y-2.5">
-                          <div className="flex justify-between items-center">
-                            <span className="font-bold text-slate-200 text-xs">3. Choose Date & Time Slot</span>
-                            <span className="text-[10px] text-emerald-400 font-semibold">Live Slots</span>
-                          </div>
-
-                          {/* DATE SELECTOR PILLS */}
-                          <div className="flex space-x-1.5 overflow-x-auto pb-1">
-                            {[
-                              { id: 'today', day: 'Today', date: 'Sep 9', badge: 'Fastest' },
-                              { id: 'tom', day: 'Tomorrow', date: 'Sep 10', badge: 'Popular' },
-                              { id: 'thu', day: 'Thursday', date: 'Sep 11' },
-                              { id: 'fri', day: 'Friday', date: 'Sep 12' },
-                            ].map((d) => (
-                              <button
-                                key={d.id}
-                                onClick={() => setSimDate(d)}
-                                className={`flex-1 min-w-[76px] py-1.5 px-2 rounded-xl text-center border transition ${
-                                  simDate.id === d.id 
-                                    ? 'bg-emerald-600 border-emerald-400 text-white font-bold' 
-                                    : 'bg-slate-800/80 border-slate-700 text-slate-300'
-                                }`}
-                              >
-                                {d.badge && <span className="block text-[8px] text-amber-300 font-black uppercase">{d.badge}</span>}
-                                <span className="block text-[11px] leading-tight">{d.day}</span>
-                                <span className="block text-[9px] opacity-80">{d.date}</span>
-                              </button>
-                            ))}
-                          </div>
-
-                          {/* TIME PERIOD TABS */}
-                          <div className="flex bg-slate-900 p-1 rounded-xl border border-slate-800">
-                            {[
-                              { id: 'morning', label: '🌅 Morning' },
-                              { id: 'afternoon', label: '☀️ Afternoon' },
-                              { id: 'evening', label: '🌙 Evening' }
-                            ].map((p) => (
-                              <button
-                                key={p.id}
-                                onClick={() => {
-                                  setSimPeriod(p.id as any);
-                                  setSimTimeSlot(p.id === 'morning' ? '10:45 AM' : p.id === 'afternoon' ? '02:30 PM' : '06:30 PM');
-                                }}
-                                className={`flex-1 py-1 rounded-lg text-[10px] font-bold transition ${
-                                  simPeriod === p.id ? 'bg-slate-800 text-emerald-400 shadow-sm' : 'text-slate-400 hover:text-white'
-                                }`}
-                              >
-                                {p.label}
-                              </button>
-                            ))}
-                          </div>
-
-                          {/* TIME SLOT CHIPS */}
-                          <div className="grid grid-cols-3 gap-1.5">
-                            {(simPeriod === 'morning' 
-                              ? ['08:30 AM', '09:45 AM', '10:45 AM', '11:30 AM']
-                              : simPeriod === 'afternoon'
-                              ? ['01:15 PM', '02:30 PM', '03:45 PM', '04:30 PM']
-                              : ['05:30 PM', '06:30 PM', '07:15 PM']
-                            ).map((slot) => (
-                              <button
-                                key={slot}
-                                onClick={() => setSimTimeSlot(slot)}
-                                className={`py-1.5 px-2 rounded-lg text-[11px] font-bold border transition text-center ${
-                                  simTimeSlot === slot 
-                                    ? 'bg-emerald-600 border-emerald-400 text-white shadow' 
-                                    : 'bg-slate-800/90 border-slate-700 text-slate-300 hover:border-slate-600'
-                                }`}
-                              >
-                                {slot}
-                              </button>
-                            ))}
-                          </div>
-
-                          {/* CONFIRMED TIME HIGHLIGHT */}
-                          <div className="bg-emerald-950/40 border border-emerald-600/40 rounded-xl p-2 flex items-center justify-between text-[10px]">
-                            <div className="flex items-center space-x-1.5">
-                              <span className="text-base">🗓️</span>
+                        {/* TAB 1: REQUEST VISIT */}
+                        {simActiveTab === 'request' && (
+                          <div className="space-y-3">
+                            {/* GREETING CARD */}
+                            <div className="bg-white rounded-2xl p-3 border border-slate-200/80 shadow-xs flex items-center justify-between">
                               <div>
-                                <p className="font-bold text-emerald-300">Confirmed Booking Slot:</p>
-                                <p className="text-white font-semibold">{simDate.day} ({simDate.date}) at {simTimeSlot}</p>
+                                <p className="font-bold text-slate-900 text-xs">Good Morning, {simProfile.fullName.split(' ')[0]} 👋</p>
+                                <p className="text-[10px] text-slate-500">Licensed in-home physiotherapy session.</p>
+                              </div>
+                              <button 
+                                onClick={() => setSimActiveTab('profile')}
+                                className="bg-teal-50 text-teal-700 text-[10px] font-bold px-2 py-0.5 rounded-full border border-teal-200 hover:bg-teal-100 transition"
+                              >
+                                Edit Info
+                              </button>
+                            </div>
+
+                            {/* 1. SELECT SPECIALTY */}
+                            <div className="bg-white rounded-2xl p-3 border border-slate-200/80 shadow-xs space-y-2">
+                              <div className="flex justify-between items-center">
+                                <span className="font-bold text-slate-900 text-xs">1. Select Specialty</span>
+                                <span className="text-[10px] text-teal-700 font-semibold">45-60 min care</span>
+                              </div>
+
+                              <div className="grid grid-cols-2 gap-2">
+                                {THERAPY_CATEGORIES.slice(0, 4).map((cat) => (
+                                  <button
+                                    key={cat.id}
+                                    onClick={() => setSimCategory(cat)}
+                                    className={`p-2 rounded-xl text-left border transition ${
+                                      simCategory.id === cat.id 
+                                        ? 'border-teal-600 bg-teal-50/60 text-slate-900 shadow-xs' 
+                                        : 'border-slate-200 bg-slate-50/60 text-slate-700 hover:border-slate-300'
+                                    }`}
+                                  >
+                                    <div className="flex justify-between items-center text-sm mb-1">
+                                      <span>{cat.id === 'cat_ortho' ? '🦴' : cat.id === 'cat_post_op' ? '🩹' : cat.id === 'cat_neuro' ? '🧠' : '⚡'}</span>
+                                      <span className="text-[10px] font-bold bg-white border border-slate-200 px-1.5 py-0.5 rounded text-teal-700">${cat.basePriceUSD}</span>
+                                    </div>
+                                    <p className="font-bold text-[11px] leading-tight truncate">{cat.name}</p>
+                                    <p className="text-[9px] text-slate-500 mt-0.5">⏱ {cat.standardDurationMinutes} mins</p>
+                                  </button>
+                                ))}
                               </div>
                             </div>
-                            <span className="bg-emerald-500 text-slate-950 font-black px-2 py-0.5 rounded text-[9px]">READY</span>
-                          </div>
-                        </div>
 
-                        {/* 4. ADDRESS & RECEIPT */}
-                        <div className="bg-slate-800/60 rounded-2xl p-3 border border-slate-700/60 space-y-2">
-                          <span className="font-bold text-slate-200 text-xs">4. Location & Payment</span>
-                          
-                          <div className="flex space-x-1.5">
-                            {['🏠 Home', '🏢 Office', '👵 Parents'].map((preset) => (
+                            {/* 2. PAIN FOCUS & VAS SCALE */}
+                            <div className="bg-white rounded-2xl p-3 border border-slate-200/80 shadow-xs space-y-2">
+                              <span className="font-bold text-slate-900 text-xs">2. Pain Focus & VAS Severity</span>
+                              
+                              <div className="flex flex-wrap gap-1.5">
+                                {['🦴 Lower Back', '🧣 Neck', '🦵 Knee', '🏊 Shoulder', '⚡ Sciatica', '🚶 Hip'].map((chip) => {
+                                  const isPicked = simPainAreas.includes(chip);
+                                  return (
+                                    <button
+                                      key={chip}
+                                      onClick={() => {
+                                        if (isPicked) {
+                                          if (simPainAreas.length > 1) setSimPainAreas(simPainAreas.filter(p => p !== chip));
+                                        } else {
+                                          setSimPainAreas([...simPainAreas, chip]);
+                                        }
+                                      }}
+                                      className={`px-2.5 py-1 rounded-lg text-[10px] font-semibold border transition ${
+                                        isPicked ? 'bg-teal-600 border-teal-600 text-white' : 'bg-slate-100 border-slate-200 text-slate-700'
+                                      }`}
+                                    >
+                                      {chip}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+
+                              <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200 space-y-1.5">
+                                <div className="flex justify-between items-center text-[10px]">
+                                  <span className="text-slate-500 font-semibold">Clinical Pain Scale (VAS):</span>
+                                  <span className="font-bold text-amber-700">{simPainSeverity} / 10 (Moderate)</span>
+                                </div>
+                                <div className="flex justify-between">
+                                  {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((num) => (
+                                    <button
+                                      key={num}
+                                      onClick={() => setSimPainSeverity(num)}
+                                      className={`w-6 h-6 rounded-full text-[10px] font-bold transition flex items-center justify-center ${
+                                        simPainSeverity === num 
+                                          ? 'bg-amber-500 text-white font-black shadow-xs' 
+                                          : 'bg-white border border-slate-200 text-slate-600 hover:border-slate-300'
+                                      }`}
+                                    >
+                                      {num}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* 3. INTERACTIVE DATE & TIME PICKER */}
+                            <div className="bg-white rounded-2xl p-3 border border-slate-200/80 shadow-xs space-y-2.5">
+                              <div className="flex justify-between items-center">
+                                <span className="font-bold text-slate-900 text-xs">3. Choose Date & Time Slot</span>
+                                <span className="text-[10px] text-teal-700 font-semibold">Live Slots</span>
+                              </div>
+
+                              <div className="flex space-x-1.5 overflow-x-auto pb-1">
+                                {[
+                                  { id: 'today', day: 'Today', date: 'Sep 9', badge: 'Fastest' },
+                                  { id: 'tom', day: 'Tomorrow', date: 'Sep 10', badge: 'Popular' },
+                                  { id: 'thu', day: 'Thursday', date: 'Sep 11' },
+                                  { id: 'fri', day: 'Friday', date: 'Sep 12' },
+                                ].map((d) => (
+                                  <button
+                                    key={d.id}
+                                    onClick={() => setSimDate(d)}
+                                    className={`flex-1 min-w-[76px] py-1.5 px-2 rounded-xl text-center border transition ${
+                                      simDate.id === d.id 
+                                        ? 'bg-teal-600 border-teal-600 text-white font-bold shadow-xs' 
+                                        : 'bg-slate-50 border-slate-200 text-slate-700'
+                                    }`}
+                                  >
+                                    {d.badge && <span className={`block text-[8px] font-black uppercase ${simDate.id === d.id ? 'text-amber-200' : 'text-amber-700'}`}>{d.badge}</span>}
+                                    <span className="block text-[11px] leading-tight">{d.day}</span>
+                                    <span className="block text-[9px] opacity-80">{d.date}</span>
+                                  </button>
+                                ))}
+                              </div>
+
+                              <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200">
+                                {[
+                                  { id: 'morning', label: '🌅 Morning' },
+                                  { id: 'afternoon', label: '☀️ Afternoon' },
+                                  { id: 'evening', label: '🌙 Evening' }
+                                ].map((p) => (
+                                  <button
+                                    key={p.id}
+                                    onClick={() => {
+                                      setSimPeriod(p.id as any);
+                                      setSimTimeSlot(p.id === 'morning' ? '10:45 AM' : p.id === 'afternoon' ? '02:30 PM' : '06:30 PM');
+                                    }}
+                                    className={`flex-1 py-1 rounded-lg text-[10px] font-bold transition ${
+                                      simPeriod === p.id ? 'bg-white text-teal-700 shadow-xs' : 'text-slate-500 hover:text-slate-800'
+                                    }`}
+                                  >
+                                    {p.label}
+                                  </button>
+                                ))}
+                              </div>
+
+                              <div className="grid grid-cols-3 gap-1.5">
+                                {(simPeriod === 'morning' 
+                                  ? ['08:30 AM', '09:45 AM', '10:45 AM', '11:30 AM']
+                                  : simPeriod === 'afternoon'
+                                  ? ['01:15 PM', '02:30 PM', '03:45 PM', '04:30 PM']
+                                  : ['05:30 PM', '06:30 PM', '07:15 PM']
+                                ).map((slot) => (
+                                  <button
+                                    key={slot}
+                                    onClick={() => setSimTimeSlot(slot)}
+                                    className={`py-1.5 px-2 rounded-lg text-[11px] font-bold border transition text-center ${
+                                      simTimeSlot === slot 
+                                        ? 'bg-teal-600 border-teal-600 text-white shadow-xs' 
+                                        : 'bg-slate-50 border-slate-200 text-slate-700 hover:border-slate-300'
+                                    }`}
+                                  >
+                                    {slot}
+                                  </button>
+                                ))}
+                              </div>
+
+                              <div className="bg-teal-50/80 border border-teal-200 rounded-xl p-2 flex items-center justify-between text-[10px]">
+                                <div className="flex items-center space-x-1.5">
+                                  <span className="text-base">🗓️</span>
+                                  <div>
+                                    <p className="font-bold text-teal-900">Confirmed Booking Slot:</p>
+                                    <p className="text-slate-900 font-semibold">{simDate.day} ({simDate.date}) at {simTimeSlot}</p>
+                                  </div>
+                                </div>
+                                <span className="bg-teal-600 text-white font-black px-2 py-0.5 rounded text-[9px]">READY</span>
+                              </div>
+                            </div>
+
+                            {/* 4. ADDRESS & RECEIPT */}
+                            <div className="bg-white rounded-2xl p-3 border border-slate-200/80 shadow-xs space-y-2">
+                              <div className="flex justify-between items-center">
+                                <span className="font-bold text-slate-900 text-xs">4. Home Location</span>
+                                <button onClick={() => setSimActiveTab('profile')} className="text-[10px] text-teal-700 font-bold hover:underline">
+                                  Edit in Profile
+                                </button>
+                              </div>
+                              
+                              <p className="text-[11px] text-slate-800 bg-slate-50 p-2 rounded-xl border border-slate-200 font-medium">
+                                📍 {simProfile.primaryAddress}
+                              </p>
+                              <p className="text-[10px] text-slate-500">Patient: {simProfile.fullName} • Phone: {simProfile.phone}</p>
+
+                              {/* RECEIPT */}
+                              <div className="bg-slate-50 rounded-xl p-2.5 text-[10px] space-y-1 text-slate-600 border border-slate-200">
+                                <div className="flex justify-between">
+                                  <span>Specialty Session ({simCategory.name})</span>
+                                  <span className="text-slate-900 font-bold">${simCategory.basePriceUSD}.00</span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span>In-Home Transit & Sterilized Mobile Kit</span>
+                                  <span className="text-teal-700 font-bold">FREE INCLUDED</span>
+                                </div>
+                                <div className="flex justify-between pt-1 border-t border-slate-200 text-xs font-black text-slate-900">
+                                  <span>Total Payable (Pay After Visit)</span>
+                                  <span className="text-teal-700">${simCategory.basePriceUSD}.00</span>
+                                </div>
+                              </div>
+
+                              {/* SUBMIT BUTTON */}
                               <button
-                                key={preset}
-                                onClick={() => setSimAddress(preset.includes('Home') ? '742 Evergreen Terrace, Apt 4B, New York' : preset.includes('Office') ? '450 Lexington Ave, Fl 18' : '128 Central Park South')}
-                                className="px-2 py-1 rounded-lg text-[10px] bg-slate-800 border border-slate-700 text-slate-300 font-semibold"
+                                onClick={async () => {
+                                  try {
+                                    await fetch(`${API_BASE}/requests`, {
+                                      method: 'POST',
+                                      headers: { 'Content-Type': 'application/json' },
+                                      body: JSON.stringify({
+                                        createdByUserRole: 'PATIENT',
+                                        categoryId: simCategory.id,
+                                        address: {
+                                          addressLine: simProfile.primaryAddress,
+                                          city: 'New York',
+                                          pinCode: '10024',
+                                          coordinates: { latitude: 40.7850, longitude: -73.9680 }
+                                        },
+                                        painAreas: simPainAreas,
+                                        conditionDescription: `[Patient: ${simProfile.fullName}, Age: ${simProfile.age}, Conditions: ${simProfile.conditions.join(', ')}] [VAS ${simPainSeverity}/10] Acute session requested from mobile simulator.`,
+                                        preferredTimeWindow: `${simDate.day} (${simDate.date}) at ${simTimeSlot}`,
+                                        urgency: simPainSeverity >= 8 ? 'URGENT' : 'NORMAL'
+                                      })
+                                    });
+                                    setSimBookSuccess(true);
+                                    fetchData();
+                                    setTimeout(() => setSimBookSuccess(false), 4000);
+                                  } catch (e) {
+                                    alert('Request logged in offline preview mode.');
+                                  }
+                                }}
+                                className="w-full bg-teal-600 hover:bg-teal-500 text-white font-extrabold py-2.5 rounded-xl text-xs transition shadow-xs flex items-center justify-center space-x-1.5"
                               >
-                                {preset}
+                                <span>Confirm In-Home Visit (${simCategory.basePriceUSD}.00) →</span>
                               </button>
-                            ))}
-                          </div>
 
-                          <p className="text-[11px] text-slate-300 bg-slate-900/90 p-2 rounded-xl border border-slate-800">
-                            📍 {simAddress}
-                          </p>
-
-                          {/* RECEIPT */}
-                          <div className="bg-slate-900/60 rounded-xl p-2 text-[10px] space-y-1 text-slate-400">
-                            <div className="flex justify-between">
-                              <span>Specialty Session ({simCategory.name})</span>
-                              <span className="text-slate-200 font-bold">${simCategory.basePriceUSD}.00</span>
-                            </div>
-                            <div className="flex justify-between">
-                              <span>In-Home Transit & Sterilized Kit</span>
-                              <span className="text-emerald-400 font-bold">FREE INCLUDED</span>
-                            </div>
-                            <div className="flex justify-between pt-1 border-t border-slate-800 text-xs font-black text-white">
-                              <span>Total Payable (Pay After Visit)</span>
-                              <span className="text-emerald-400">${simCategory.basePriceUSD}.00</span>
+                              {simBookSuccess && (
+                                <div className="bg-emerald-100 text-emerald-900 border border-emerald-300 text-[11px] font-bold p-2 rounded-xl text-center">
+                                  🎉 In-Home Visit Confirmed! Check Pending Triage Queue above.
+                                </div>
+                              )}
                             </div>
                           </div>
+                        )}
 
-                          {/* SUBMIT BUTTON */}
-                          <button
-                            onClick={async () => {
-                              try {
-                                await fetch(`${API_BASE}/requests`, {
-                                  method: 'POST',
-                                  headers: { 'Content-Type': 'application/json' },
-                                  body: JSON.stringify({
-                                    createdByUserRole: 'PATIENT',
-                                    categoryId: simCategory.id,
-                                    address: {
-                                      addressLine: simAddress,
-                                      city: 'New York',
-                                      pinCode: '10024',
-                                      coordinates: { latitude: 40.7850, longitude: -73.9680 }
-                                    },
-                                    painAreas: simPainAreas,
-                                    conditionDescription: `[Pain Level ${simPainSeverity}/10] Acute session requested from mobile simulator.`,
-                                    preferredTimeWindow: `${simDate.day} (${simDate.date}) at ${simTimeSlot}`,
-                                    urgency: simPainSeverity >= 8 ? 'URGENT' : 'NORMAL'
-                                  })
-                                });
-                                setSimBookSuccess(true);
-                                fetchData();
-                                setTimeout(() => setSimBookSuccess(false), 4000);
-                              } catch (e) {
-                                alert('Request logged in offline preview mode.');
-                              }
-                            }}
-                            className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold py-2.5 rounded-xl text-xs transition shadow-md flex items-center justify-center space-x-1.5"
-                          >
-                            <span>Confirm In-Home Visit (${simCategory.basePriceUSD}.00) →</span>
-                          </button>
+                        {/* TAB 2: LIVE VISIT STATUS */}
+                        {simActiveTab === 'status' && (
+                          <div className="space-y-3">
+                            {appointments.length > 0 ? (
+                              <div className="bg-white rounded-2xl p-3.5 border border-slate-200 shadow-xs space-y-3">
+                                <div className="flex justify-between items-center">
+                                  <span className="text-[10px] font-bold text-amber-800 bg-amber-100 border border-amber-200 px-2 py-0.5 rounded-full uppercase">
+                                    {appointments[0].status.replace('_', ' ')}
+                                  </span>
+                                  <span className="text-[11px] text-teal-700 font-bold">${appointments[0].totalAmount}.00</span>
+                                </div>
+                                <h4 className="font-bold text-slate-900 text-sm">{appointments[0].request?.category?.name}</h4>
+                                <p className="text-[11px] text-slate-600">Assigned Clinician: <strong className="text-slate-900">{appointments[0].therapist?.user?.fullName}</strong></p>
 
-                          {simBookSuccess && (
-                            <div className="bg-emerald-500 text-slate-950 text-[11px] font-bold p-2 rounded-xl text-center animate-bounce">
-                              🎉 Visit Requested! Check Pending Triage Queue above.
+                                <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200 space-y-1.5 text-[11px] text-slate-600">
+                                  <p className="font-bold text-slate-900 text-[10px] uppercase">Real-Time Progress:</p>
+                                  <p>✅ 1. Request Confirmed & Clinician Assigned</p>
+                                  <p>🚗 2. Clinician traveling (ETA ~14 mins)</p>
+                                  <p>🏡 3. Arrived at door</p>
+                                  <p>🩺 4. Treatment active (45 mins)</p>
+                                  <p>🎉 5. Complete & Care Plan</p>
+                                </div>
+
+                                <div className="bg-teal-50 border border-teal-200 p-2.5 rounded-xl text-center">
+                                  <p className="text-[10px] text-teal-900 uppercase font-bold">Cash Collection Security Code (Show Therapist):</p>
+                                  <p className="text-base font-black text-teal-700 tracking-widest font-mono">{appointments[0].cashConfirmationOtp || '7492'}</p>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="bg-white rounded-2xl p-6 text-center border border-slate-200 text-slate-500">
+                                <p className="text-xs">No active appointment in progress.</p>
+                                <button 
+                                  onClick={() => setSimActiveTab('request')}
+                                  className="mt-3 bg-teal-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold"
+                                >
+                                  Book First Visit
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {/* TAB 3: PERSONAL INFO & MEDICAL PROFILE */}
+                        {simActiveTab === 'profile' && (
+                          <div className="space-y-3">
+                            <div className="bg-white rounded-2xl p-3 border border-slate-200 shadow-xs flex items-center space-x-3">
+                              <div className="w-11 h-11 rounded-full bg-teal-600 text-white font-bold flex items-center justify-center text-sm">
+                                {simProfile.fullName.split(' ').map(n => n[0]).join('')}
+                              </div>
+                              <div>
+                                <p className="font-bold text-slate-900 text-xs">{simProfile.fullName}</p>
+                                <p className="text-[10px] text-slate-500">{simProfile.email}</p>
+                                <span className="inline-block bg-teal-50 text-teal-700 border border-teal-200 text-[8px] font-bold px-1.5 py-0.5 rounded mt-0.5">
+                                  🛡️ Verified Patient
+                                </span>
+                              </div>
                             </div>
-                          )}
-                        </div>
 
-                        {/* 5. ACTIVE APPOINTMENT PREVIEW */}
-                        {appointments.length > 0 && (
-                          <div className="bg-slate-800/80 rounded-2xl p-3 border border-slate-700 space-y-2">
-                            <div className="flex justify-between items-center">
-                              <span className="text-[10px] font-bold text-amber-300 bg-amber-900/40 border border-amber-600/40 px-2 py-0.5 rounded-full uppercase">
-                                {appointments[0].status.replace('_', ' ')}
-                              </span>
-                              <span className="text-[10px] text-emerald-400 font-mono font-bold">${appointments[0].totalAmount}</span>
-                            </div>
-                            <p className="font-bold text-white text-xs">{appointments[0].request?.category?.name}</p>
-                            <p className="text-[10px] text-slate-400">Assigned Clinician: <strong className="text-white">{appointments[0].therapist?.user?.fullName}</strong></p>
+                            {/* BASIC DETAILS */}
+                            <div className="bg-white rounded-2xl p-3 border border-slate-200 shadow-xs space-y-2">
+                              <span className="font-bold text-slate-900 text-xs">Personal & Contact Info</span>
+                              <div>
+                                <label className="block text-[10px] text-slate-500 font-semibold mb-0.5">Full Name</label>
+                                <input 
+                                  type="text" 
+                                  value={simProfile.fullName} 
+                                  onChange={e => setSimProfile({ ...simProfile, fullName: e.target.value })}
+                                  className="w-full text-xs p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-900"
+                                />
+                              </div>
 
-                            <div className="bg-emerald-950/40 border border-emerald-600/40 p-2 rounded-xl text-center">
-                              <p className="text-[9px] text-emerald-400 uppercase font-bold">Cash Collection Security Code (Show Therapist):</p>
-                              <p className="text-sm font-black text-emerald-300 tracking-widest font-mono">{appointments[0].cashConfirmationOtp || '7492'}</p>
+                              <div className="grid grid-cols-2 gap-2">
+                                <div>
+                                  <label className="block text-[10px] text-slate-500 font-semibold mb-0.5">Phone Number</label>
+                                  <input 
+                                    type="text" 
+                                    value={simProfile.phone} 
+                                    onChange={e => setSimProfile({ ...simProfile, phone: e.target.value })}
+                                    className="w-full text-xs p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-900"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="block text-[10px] text-slate-500 font-semibold mb-0.5">Age</label>
+                                  <input 
+                                    type="text" 
+                                    value={simProfile.age} 
+                                    onChange={e => setSimProfile({ ...simProfile, age: e.target.value })}
+                                    className="w-full text-xs p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-900"
+                                  />
+                                </div>
+                              </div>
                             </div>
+
+                            {/* MEDICAL PRECAUTIONS */}
+                            <div className="bg-white rounded-2xl p-3 border border-slate-200 shadow-xs space-y-2">
+                              <span className="font-bold text-slate-900 text-xs">Medical Conditions & Blood Group</span>
+                              <div>
+                                <label className="block text-[10px] text-slate-500 font-semibold mb-1">Blood Group</label>
+                                <div className="flex flex-wrap gap-1">
+                                  {BLOOD_GROUPS.map((bg) => (
+                                    <button 
+                                      key={bg}
+                                      onClick={() => setSimProfile({ ...simProfile, bloodGroup: bg })}
+                                      className={`px-2 py-0.5 rounded text-[10px] font-bold border transition ${
+                                        simProfile.bloodGroup === bg ? 'bg-rose-600 border-rose-600 text-white' : 'bg-slate-50 border-slate-200 text-slate-700'
+                                      }`}
+                                    >
+                                      {bg}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+
+                              <div>
+                                <label className="block text-[10px] text-slate-500 font-semibold mb-1">Pre-existing Health Conditions</label>
+                                <div className="flex flex-wrap gap-1">
+                                  {CHRONIC_CONDITIONS.map((cond) => {
+                                    const isSel = simProfile.conditions.includes(cond);
+                                    return (
+                                      <button 
+                                        key={cond}
+                                        onClick={() => {
+                                          if (cond === 'None / Healthy') {
+                                            setSimProfile({ ...simProfile, conditions: ['None / Healthy'] });
+                                            return;
+                                          }
+                                          const filtered = simProfile.conditions.filter(c => c !== 'None / Healthy');
+                                          if (filtered.includes(cond)) {
+                                            setSimProfile({ ...simProfile, conditions: filtered.filter(c => c !== cond) });
+                                          } else {
+                                            setSimProfile({ ...simProfile, conditions: [...filtered, cond] });
+                                          }
+                                        }}
+                                        className={`px-2 py-1 rounded text-[10px] font-semibold border transition ${
+                                          isSel ? 'bg-teal-50 border-teal-600 text-teal-800 font-bold' : 'bg-slate-50 border-slate-200 text-slate-600'
+                                        }`}
+                                      >
+                                        {isSel ? '✓ ' : '+ '}{cond}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* PRIMARY ADDRESS */}
+                            <div className="bg-white rounded-2xl p-3 border border-slate-200 shadow-xs space-y-2">
+                              <span className="font-bold text-slate-900 text-xs">Primary Home Address</span>
+                              <div>
+                                <input 
+                                  type="text" 
+                                  value={simProfile.primaryAddress} 
+                                  onChange={e => setSimProfile({ ...simProfile, primaryAddress: e.target.value })}
+                                  className="w-full text-xs p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-900"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-[10px] text-slate-500 font-semibold mb-0.5">Entry / Buzzer Instructions</label>
+                                <input 
+                                  type="text" 
+                                  value={simProfile.entryNotes} 
+                                  onChange={e => setSimProfile({ ...simProfile, entryNotes: e.target.value })}
+                                  className="w-full text-xs p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-900"
+                                />
+                              </div>
+                            </div>
+
+                            {/* SAVE BUTTON */}
+                            <button 
+                              onClick={() => {
+                                setSimProfileSavedNotice(true);
+                                setTimeout(() => setSimProfileSavedNotice(false), 3000);
+                              }}
+                              className="w-full bg-teal-600 hover:bg-teal-500 text-white font-bold py-2 rounded-xl text-xs transition shadow-xs"
+                            >
+                              💾 Save Personal Details
+                            </button>
+
+                            {simProfileSavedNotice && (
+                              <div className="bg-emerald-100 text-emerald-900 border border-emerald-300 text-[11px] font-bold p-2 rounded-xl text-center">
+                                ✅ Personal details updated & synchronized!
+                              </div>
+                            )}
                           </div>
                         )}
                       </>
                     ) : (
                       /* CLINICIAN COCKPIT VIEW IN SIMULATOR */
                       <div className="space-y-3">
-                        <div className="bg-slate-800 p-3 rounded-2xl border border-slate-700 flex items-center space-x-2.5">
+                        <div className="bg-white p-3 rounded-2xl border border-slate-200 shadow-xs flex items-center space-x-2.5">
                           <div className="w-9 h-9 rounded-full bg-sky-600 flex items-center justify-center font-bold text-white text-xs">
                             SJ
                           </div>
                           <div>
-                            <p className="font-bold text-white text-xs">Dr. Sarah Jenkins, PT, DPT</p>
-                            <p className="text-[9px] text-sky-400">Senior Orthopedic Clinician • NY Board</p>
+                            <p className="font-bold text-slate-900 text-xs">Dr. Sarah Jenkins, PT, DPT</p>
+                            <p className="text-[9px] text-sky-600">Senior Orthopedic Clinician • NY Board</p>
                           </div>
                         </div>
 
                         {appointments.length > 0 ? (
-                          <div className="bg-slate-800/90 rounded-2xl p-3 border border-slate-700 space-y-2.5">
+                          <div className="bg-white rounded-2xl p-3 border border-slate-200 shadow-xs space-y-2.5">
                             <div className="flex justify-between items-center">
-                              <span className="font-bold text-xs text-white">Assigned Home Visit</span>
-                              <span className="text-[9px] bg-slate-700 text-slate-300 px-1.5 py-0.5 rounded font-mono">10:00 AM</span>
+                              <span className="font-bold text-xs text-slate-900">Assigned Home Visit</span>
+                              <span className="text-[9px] bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded font-mono">10:00 AM</span>
                             </div>
-                            <p className="text-[11px] text-slate-300">Patient: <strong className="text-white">{appointments[0].patient?.fullName}</strong></p>
-                            <p className="text-[10px] text-slate-400">📍 {appointments[0].request?.address?.addressLine}</p>
+                            <p className="text-[11px] text-slate-700">Patient: <strong className="text-slate-900">{appointments[0].patient?.fullName}</strong></p>
+                            <p className="text-[10px] text-slate-500">📍 {appointments[0].request?.address?.addressLine}</p>
 
-                            <div className="pt-2 border-t border-slate-700 space-y-1.5">
+                            <div className="pt-2 border-t border-slate-100 space-y-1.5">
                               <p className="text-[9px] font-bold text-slate-400 uppercase">Update Visit Status:</p>
                               <div className="grid grid-cols-2 gap-1.5">
                                 <button 
@@ -1099,7 +1306,7 @@ export default function App() {
                                     });
                                     fetchData();
                                   }}
-                                  className="bg-emerald-600 hover:bg-emerald-500 text-white py-1.5 rounded-lg text-[10px] font-bold"
+                                  className="bg-teal-600 hover:bg-teal-500 text-white py-1.5 rounded-lg text-[10px] font-bold"
                                 >
                                   ✅ 4. Complete
                                 </button>
@@ -1107,7 +1314,7 @@ export default function App() {
                             </div>
                           </div>
                         ) : (
-                          <div className="bg-slate-800 p-6 rounded-2xl text-center text-slate-400">
+                          <div className="bg-white p-6 rounded-2xl text-center text-slate-400 border border-slate-200">
                             <p className="text-xs">No active appointment assigned yet.</p>
                           </div>
                         )}
