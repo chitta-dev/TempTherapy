@@ -18,7 +18,43 @@ const PORT = process.env.PORT || 4000;
 app.use(cors());
 app.use(express.json());
 
-// In-Memory Database Store (Pre-populated with Seed Data)
+// Friendly Root Landing Page
+app.get('/', (req: Request, res: Response) => {
+  res.send(`
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <title>TherapyCare API Server</title>
+        <style>
+          body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f172a; color: #f8fafc; padding: 40px; }
+          .card { background: #1e293b; border-radius: 12px; padding: 24px; max-width: 600px; border: 1px solid #334155; }
+          h1 { color: #10b981; margin-top: 0; }
+          a { color: #38bdf8; text-decoration: none; font-weight: 500; }
+          a:hover { text-decoration: underline; }
+          ul { line-height: 1.8; }
+          .badge { background: #065f46; color: #6ee7b7; padding: 4px 8px; border-radius: 6px; font-size: 12px; }
+        </style>
+      </head>
+      <body>
+        <div class="card">
+          <h1>🚀 TherapyCare Backend API is Live</h1>
+          <p><span class="badge">STATUS: ACTIVE</span> &bull; Port: <strong>4000</strong></p>
+          <p>Web Admin & Desk Dispatch Dashboard: <a href="http://localhost:3000" target="_blank">http://localhost:3000</a></p>
+          <hr style="border-color: #334155; margin: 20px 0;" />
+          <h3>Available API Endpoints:</h3>
+          <ul>
+            <li><a href="/api/categories" target="_blank">GET /api/categories</a> - 7 Standard Therapy Categories</li>
+            <li><a href="/api/requests" target="_blank">GET /api/requests</a> - Service Requests Triage Queue</li>
+            <li><a href="/api/therapists" target="_blank">GET /api/therapists</a> - Certified Physiotherapists Roster</li>
+            <li><a href="/api/appointments" target="_blank">GET /api/appointments</a> - Active Confirmed Appointments</li>
+          </ul>
+        </div>
+      </body>
+    </html>
+  `);
+});
+
+// Seed Data & In-Memory Storage
 const USERS: User[] = [
   {
     id: 'usr_patient_1',
@@ -81,7 +117,7 @@ const THERAPISTS: TherapistProfile[] = [
     seniority: 'SENIOR',
     yearsOfExperience: 7,
     serviceRadiusKm: 12,
-    baseCoordinates: { latitude: 40.7128, longitude: -74.0060 }, // Downtown
+    baseCoordinates: { latitude: 40.7128, longitude: -74.0060 },
     isVerified: true,
     rating: 4.9,
     totalReviews: 128,
@@ -96,7 +132,7 @@ const THERAPISTS: TherapistProfile[] = [
     seniority: 'MASTER_CONSULTANT',
     yearsOfExperience: 12,
     serviceRadiusKm: 15,
-    baseCoordinates: { latitude: 40.7831, longitude: -73.9712 }, // Upper West Side
+    baseCoordinates: { latitude: 40.7831, longitude: -73.9712 },
     isVerified: true,
     rating: 5.0,
     totalReviews: 215,
@@ -162,10 +198,8 @@ const APPOINTMENTS: Appointment[] = [
 
 // ==================== AUTH ENDPOINTS ====================
 
-// 1. Patient SSO Login (Google / Apple + Biometrics)
 app.post('/api/auth/sso-login', (req: Request, res: Response) => {
   const { email, fullName, ssoProvider, phone } = req.body;
-  
   let user = USERS.find(u => u.email === email);
   if (!user) {
     user = {
@@ -180,31 +214,19 @@ app.post('/api/auth/sso-login', (req: Request, res: Response) => {
     };
     USERS.push(user);
   }
-  
-  res.json({
-    success: true,
-    user,
-    token: `jwt_token_sso_${user.id}_${Date.now()}`
-  });
+  res.json({ success: true, user, token: `jwt_token_sso_${user.id}_${Date.now()}` });
 });
 
-// 2. Staff / Clinician Login (Admin, Desk Boy, Therapist - Email & Password)
 app.post('/api/auth/staff-login', (req: Request, res: Response) => {
   const { email, password } = req.body;
   const user = USERS.find(u => u.email.toLowerCase() === (email || '').toLowerCase());
-  
   if (!user || user.role === 'PATIENT') {
     return res.status(401).json({ success: false, message: 'Invalid staff credentials or unauthorized account.' });
   }
-
-  res.json({
-    success: true,
-    user,
-    token: `jwt_token_staff_${user.id}_${Date.now()}`
-  });
+  res.json({ success: true, user, token: `jwt_token_staff_${user.id}_${Date.now()}` });
 });
 
-// ==================== CATALOG & FEE ESTIMATION ====================
+// ==================== CATALOG & PRICING ====================
 
 app.get('/api/categories', (req: Request, res: Response) => {
   res.json({ success: true, categories: THERAPY_CATEGORIES });
@@ -224,7 +246,6 @@ app.post('/api/pricing/calculate', (req: Request, res: Response) => {
 
 // ==================== SERVICE REQUESTS ====================
 
-// Patient or Desk Boy creates a service request
 app.post('/api/requests', (req: Request, res: Response) => {
   const { 
     patientId, 
@@ -290,7 +311,7 @@ app.get('/api/therapists', (req: Request, res: Response) => {
   res.json({ success: true, count: matches.length, therapists: matches });
 });
 
-// ==================== DISPATCH & SCHEDULING (ADMIN / DESK BOY) ====================
+// ==================== DISPATCH & SCHEDULING ====================
 
 app.post('/api/dispatch/assign', (req: Request, res: Response) => {
   const { 
@@ -308,7 +329,7 @@ app.post('/api/dispatch/assign', (req: Request, res: Response) => {
   }
 
   const therapist = THERAPISTS.find(t => t.id === therapistId) || THERAPISTS[0];
-  const distanceKm = 4.8; // Calculated via PostGIS / Google Distance Matrix
+  const distanceKm = 4.8;
   const feeCalc = calculateSessionFee({
     categoryId: request.categoryId,
     travelDistanceKm: distanceKm,
@@ -361,7 +382,6 @@ app.get('/api/appointments', (req: Request, res: Response) => {
   res.json({ success: true, count: results.length, appointments: results });
 });
 
-// Therapist updates visit status (EN_ROUTE -> ARRIVED -> IN_SESSION -> COMPLETED)
 app.patch('/api/appointments/:id/status', (req: Request, res: Response) => {
   const { id } = req.params;
   const { status, clinicalNotes, prescribedExercises } = req.body;
@@ -383,7 +403,6 @@ app.patch('/api/appointments/:id/status', (req: Request, res: Response) => {
   res.json({ success: true, appointment: apt });
 });
 
-// Settle Payment / Verify Cash OTP
 app.post('/api/appointments/:id/pay', (req: Request, res: Response) => {
   const { id } = req.params;
   const { paymentMode, cashOtp } = req.body;
