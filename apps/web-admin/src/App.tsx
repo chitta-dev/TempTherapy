@@ -62,6 +62,18 @@ export default function App() {
   const [newTimeWindow, setNewTimeWindow] = useState('Morning (9 AM - 12 PM)');
   const [isUrgent, setIsUrgent] = useState(false);
 
+  // Mobile App Simulator Interactive State
+  const [simRole, setSimRole] = useState<'PATIENT' | 'THERAPIST'>('PATIENT');
+  const [simCategory, setSimCategory] = useState(THERAPY_CATEGORIES[0]);
+  const [simDate, setSimDate] = useState({ id: 'tom', day: 'Tomorrow', date: 'Sep 10' });
+  const [simPeriod, setSimPeriod] = useState<'morning' | 'afternoon' | 'evening'>('morning');
+  const [simTimeSlot, setSimTimeSlot] = useState('10:45 AM');
+  const [simPainAreas, setSimPainAreas] = useState<string[]>(['Lower Back', 'Sciatic Nerve']);
+  const [simPainSeverity, setSimPainSeverity] = useState<number>(6);
+  const [simAddress, setSimAddress] = useState('742 Evergreen Terrace, Apt 4B, New York');
+  const [simPaymentMode, setSimPaymentMode] = useState<'CASH' | 'CARD'>('CASH');
+  const [simBookSuccess, setSimBookSuccess] = useState(false);
+
   // Fetch initial data
   const fetchData = async () => {
     setLoading(true);
@@ -673,122 +685,435 @@ export default function App() {
         {activeTab === 'mobile-sim' && (
           <div className="max-w-4xl mx-auto space-y-6">
             <div className="text-center">
-              <h2 className="text-xl font-bold text-slate-900">📱 Mobile App Simulator (Patient & Therapist)</h2>
-              <p className="text-xs text-slate-500 mt-1">Test the full iOS/Android mobile user journey directly in your browser with real-time API sync!</p>
+              <div className="inline-flex items-center space-x-2 bg-indigo-100 text-indigo-800 px-3 py-1 rounded-full text-xs font-bold mb-2">
+                <Smartphone className="w-3.5 h-3.5" />
+                <span>Interactive Mobile Experience</span>
+              </div>
+              <h2 className="text-2xl font-black text-slate-900 tracking-tight">📱 Mobile App Simulator (Patient & Clinician)</h2>
+              <p className="text-xs text-slate-500 mt-1 max-w-lg mx-auto">
+                Test the complete in-home booking lifecycle with interactive date/time pickers, pain map chips, VAS scale, and live status dispatch!
+              </p>
             </div>
 
             <div className="flex justify-center">
-              <div className="w-[380px] bg-slate-950 rounded-[44px] p-4 shadow-2xl border-4 border-slate-800">
-                <div className="w-32 h-4 bg-slate-900 rounded-full mx-auto mb-3"></div>
-                <div className="bg-slate-50 rounded-[32px] p-4 text-slate-900 min-h-[600px] max-h-[600px] overflow-y-auto space-y-4 text-xs">
-                  <div className="bg-emerald-600 text-white p-3.5 rounded-2xl shadow-sm">
-                    <p className="text-[10px] text-emerald-200 uppercase font-semibold">Patient Mobile App • SSO Active</p>
-                    <h3 className="text-sm font-bold mt-0.5">Johnathan Doe</h3>
-                    <p className="text-[11px] text-emerald-100">🔒 Location & Biometrics Verified</p>
+              {/* PHONE FRAME */}
+              <div className="w-[410px] bg-slate-950 rounded-[48px] p-3.5 shadow-2xl border-4 border-slate-800 flex flex-col">
+                {/* NOTCH & STATUS BAR */}
+                <div className="flex justify-between items-center px-5 pt-1.5 pb-2 text-[10px] text-slate-400 font-bold">
+                  <span>9:41</span>
+                  <div className="w-24 h-4 bg-slate-900 rounded-full"></div>
+                  <div className="flex items-center space-x-1.5">
+                    <span>5G</span>
+                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
                   </div>
+                </div>
 
-                  <div className="bg-white p-3.5 rounded-2xl border border-slate-200 space-y-2.5 shadow-xs">
-                    <h4 className="font-bold text-slate-900 text-xs">📍 Request In-Home Physiotherapy</h4>
-                    <p className="text-[11px] text-slate-600">Address: <strong>742 Evergreen Terrace, Apt 4B, New York</strong></p>
-                    <p className="text-[11px] text-slate-600">Specialty: <strong>Orthopedic & Spine Care ($45)</strong></p>
-                    <p className="text-[11px] text-slate-600">Pain Focus: <strong>Lower Back & Left Sciatic Nerve</strong></p>
-                    <button 
-                      onClick={async () => {
-                        await fetch('http://localhost:4000/api/requests', {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({
-                            createdByUserRole: 'PATIENT',
-                            categoryId: 'cat_ortho',
-                            painAreas: ['Lower Back'],
-                            conditionDescription: 'Mobile app test request for acute back pain.',
-                            preferredTimeWindow: 'Tomorrow Morning (9 AM - 12 PM)'
-                          })
-                        });
-                        alert('Request submitted from mobile simulator! Check the Pending Triage Queue.');
-                        fetchData();
-                      }}
-                      className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2 rounded-xl text-xs transition shadow-xs flex items-center justify-center space-x-1.5"
-                    >
-                      <span>Submit In-Home Request</span>
-                    </button>
-                  </div>
-
-                  {appointments.length > 0 && (
-                    <div className="bg-white p-3.5 rounded-2xl border border-slate-200 space-y-2 shadow-xs">
-                      <div className="flex justify-between items-center">
-                        <span className="text-[10px] font-bold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full uppercase">
-                          {appointments[0].status.replace('_', ' ')}
-                        </span>
-                        <span className="text-[10px] text-slate-400 font-mono">${appointments[0].totalAmount}</span>
+                {/* APP VIEWPORT */}
+                <div className="bg-slate-900 rounded-[36px] overflow-hidden text-slate-100 min-h-[640px] max-h-[640px] flex flex-col">
+                  {/* TOP HEADER */}
+                  <div className="bg-slate-950 px-4 py-3 border-b border-slate-800 flex items-center justify-between">
+                    <div className="flex items-center space-x-2">
+                      <div className="w-7 h-7 rounded-lg bg-emerald-600 flex items-center justify-center text-xs">
+                        🩺
                       </div>
-                      <h4 className="font-bold text-slate-900 text-xs">{appointments[0].request?.category?.name || 'Physiotherapy Visit'}</h4>
-                      <p className="text-[11px] text-slate-500">Therapist: <strong>{appointments[0].therapist?.user?.fullName}</strong></p>
-                      
-                      <div className="space-y-1 pt-2 border-t border-slate-100">
-                        <p className="text-[10px] font-bold text-slate-500 uppercase">Therapist Status Actions:</p>
-                        <div className="grid grid-cols-2 gap-1.5">
-                          <button 
-                            onClick={async () => {
-                              await fetch(`http://localhost:4000/api/appointments/${appointments[0].id}/status`, {
-                                method: 'PATCH',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ status: 'EN_ROUTE' })
-                              });
-                              fetchData();
-                            }}
-                            className="bg-sky-600 hover:bg-sky-500 text-white py-1.5 rounded-lg text-[10px] font-bold"
-                          >
-                            🚗 On The Way
-                          </button>
-                          <button 
-                            onClick={async () => {
-                              await fetch(`http://localhost:4000/api/appointments/${appointments[0].id}/status`, {
-                                method: 'PATCH',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ status: 'ARRIVED' })
-                              });
-                              fetchData();
-                            }}
-                            className="bg-indigo-600 hover:bg-indigo-500 text-white py-1.5 rounded-lg text-[10px] font-bold"
-                          >
-                            🏡 Arrived
-                          </button>
-                          <button 
-                            onClick={async () => {
-                              await fetch(`http://localhost:4000/api/appointments/${appointments[0].id}/status`, {
-                                method: 'PATCH',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ status: 'IN_SESSION' })
-                              });
-                              fetchData();
-                            }}
-                            className="bg-purple-600 hover:bg-purple-500 text-white py-1.5 rounded-lg text-[10px] font-bold"
-                          >
-                            🩺 In Session
-                          </button>
-                          <button 
-                            onClick={async () => {
-                              await fetch(`http://localhost:4000/api/appointments/${appointments[0].id}/status`, {
-                                method: 'PATCH',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ status: 'COMPLETED', clinicalNotes: 'Lumbar mobilization and taught stretches.' })
-                              });
-                              fetchData();
-                            }}
-                            className="bg-emerald-600 hover:bg-emerald-500 text-white py-1.5 rounded-lg text-[10px] font-bold"
-                          >
-                            ✅ Complete
-                          </button>
+                      <div>
+                        <div className="flex items-center space-x-1.5">
+                          <span className="font-extrabold text-xs text-white">TherapyCare</span>
+                          <span className="bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[8px] font-bold px-1 rounded">HOME</span>
                         </div>
-                      </div>
-
-                      <div className="bg-emerald-50 p-2 rounded-xl text-center border border-emerald-200 mt-2">
-                        <p className="text-[10px] text-emerald-800">Cash Collection Security Code:</p>
-                        <p className="text-sm font-bold text-emerald-900 font-mono tracking-widest">{appointments[0].cashConfirmationOtp || '7492'}</p>
+                        <p className="text-[9px] text-slate-400">Certified In-Home Physio</p>
                       </div>
                     </div>
-                  )}
+
+                    {/* ROLE TOGGLE */}
+                    <div className="bg-slate-800 p-0.5 rounded-lg flex border border-slate-700">
+                      <button 
+                        onClick={() => setSimRole('PATIENT')}
+                        className={`text-[10px] font-bold px-2 py-1 rounded-md transition ${
+                          simRole === 'PATIENT' ? 'bg-emerald-600 text-white' : 'text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        Patient
+                      </button>
+                      <button 
+                        onClick={() => setSimRole('THERAPIST')}
+                        className={`text-[10px] font-bold px-2 py-1 rounded-md transition ${
+                          simRole === 'THERAPIST' ? 'bg-emerald-600 text-white' : 'text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        Clinician
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* SCROLLABLE VIEWPORT CONTENT */}
+                  <div className="flex-1 overflow-y-auto p-3.5 space-y-3.5 text-xs">
+                    {simRole === 'PATIENT' ? (
+                      <>
+                        {/* GREETING CARD */}
+                        <div className="bg-slate-800/80 rounded-2xl p-3 border border-slate-700/60 flex items-center justify-between">
+                          <div>
+                            <p className="font-bold text-slate-100 text-xs">Hello, Johnathan 👋</p>
+                            <p className="text-[10px] text-slate-400">Need in-home physiotherapy today?</p>
+                          </div>
+                          <span className="bg-emerald-500/20 text-emerald-400 text-[10px] font-bold px-2 py-0.5 rounded-full border border-emerald-500/30">
+                            🛡️ Verified
+                          </span>
+                        </div>
+
+                        {/* 1. SELECT THERAPY SPECIALTY */}
+                        <div className="bg-slate-800/60 rounded-2xl p-3 border border-slate-700/60 space-y-2">
+                          <div className="flex justify-between items-center">
+                            <span className="font-bold text-slate-200 text-xs">1. Select Specialty</span>
+                            <span className="text-[10px] text-emerald-400 font-semibold">45-60 min care</span>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-2">
+                            {THERAPY_CATEGORIES.slice(0, 4).map((cat) => (
+                              <button
+                                key={cat.id}
+                                onClick={() => setSimCategory(cat)}
+                                className={`p-2 rounded-xl text-left border transition ${
+                                  simCategory.id === cat.id 
+                                    ? 'border-emerald-500 bg-emerald-950/40 text-white shadow-sm' 
+                                    : 'border-slate-700 bg-slate-800/40 text-slate-300 hover:border-slate-600'
+                                }`}
+                              >
+                                <div className="flex justify-between items-center text-sm mb-1">
+                                  <span>{cat.id === 'cat_ortho' ? '🦴' : cat.id === 'cat_post_op' ? '🩹' : cat.id === 'cat_neuro' ? '🧠' : '⚡'}</span>
+                                  <span className="text-[10px] font-bold bg-slate-700 px-1.5 py-0.5 rounded text-emerald-400">${cat.basePriceUSD}</span>
+                                </div>
+                                <p className="font-bold text-[11px] leading-tight truncate">{cat.name}</p>
+                                <p className="text-[9px] text-slate-400 mt-0.5">⏱ {cat.standardDurationMinutes} mins</p>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* 2. INTERACTIVE PAIN AREA & VAS SCALE */}
+                        <div className="bg-slate-800/60 rounded-2xl p-3 border border-slate-700/60 space-y-2">
+                          <span className="font-bold text-slate-200 text-xs">2. Pain Focus & VAS Severity</span>
+                          
+                          {/* PAIN CHIPS */}
+                          <div className="flex flex-wrap gap-1.5">
+                            {['🦴 Lower Back', '🧣 Neck', '🦵 Knee', '🏊 Shoulder', '⚡ Sciatica', '🚶 Hip'].map((chip) => {
+                              const isPicked = simPainAreas.includes(chip);
+                              return (
+                                <button
+                                  key={chip}
+                                  onClick={() => {
+                                    if (isPicked) {
+                                      if (simPainAreas.length > 1) setSimPainAreas(simPainAreas.filter(p => p !== chip));
+                                    } else {
+                                      setSimPainAreas([...simPainAreas, chip]);
+                                    }
+                                  }}
+                                  className={`px-2.5 py-1 rounded-lg text-[10px] font-semibold border transition ${
+                                    isPicked ? 'bg-emerald-600 border-emerald-500 text-white' : 'bg-slate-800 border-slate-700 text-slate-300'
+                                  }`}
+                                >
+                                  {chip}
+                                </button>
+                              );
+                            })}
+                          </div>
+
+                          {/* VAS 1-10 BUTTONS */}
+                          <div className="bg-slate-900/80 p-2.5 rounded-xl border border-slate-800 space-y-1.5">
+                            <div className="flex justify-between items-center text-[10px]">
+                              <span className="text-slate-400">Clinical Pain Scale (VAS):</span>
+                              <span className="font-bold text-amber-400">{simPainSeverity} / 10 (Moderate)</span>
+                            </div>
+                            <div className="flex justify-between">
+                              {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((num) => (
+                                <button
+                                  key={num}
+                                  onClick={() => setSimPainSeverity(num)}
+                                  className={`w-6 h-6 rounded-full text-[10px] font-bold transition flex items-center justify-center ${
+                                    simPainSeverity === num 
+                                      ? 'bg-amber-500 text-slate-950 font-black shadow' 
+                                      : 'bg-slate-800 text-slate-400 hover:text-white'
+                                  }`}
+                                >
+                                  {num}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* 3. INTERACTIVE DATE & TIME PICKER (NO RAW TEXT) */}
+                        <div className="bg-slate-800/60 rounded-2xl p-3 border border-slate-700/60 space-y-2.5">
+                          <div className="flex justify-between items-center">
+                            <span className="font-bold text-slate-200 text-xs">3. Choose Date & Time Slot</span>
+                            <span className="text-[10px] text-emerald-400 font-semibold">Live Slots</span>
+                          </div>
+
+                          {/* DATE SELECTOR PILLS */}
+                          <div className="flex space-x-1.5 overflow-x-auto pb-1">
+                            {[
+                              { id: 'today', day: 'Today', date: 'Sep 9', badge: 'Fastest' },
+                              { id: 'tom', day: 'Tomorrow', date: 'Sep 10', badge: 'Popular' },
+                              { id: 'thu', day: 'Thursday', date: 'Sep 11' },
+                              { id: 'fri', day: 'Friday', date: 'Sep 12' },
+                            ].map((d) => (
+                              <button
+                                key={d.id}
+                                onClick={() => setSimDate(d)}
+                                className={`flex-1 min-w-[76px] py-1.5 px-2 rounded-xl text-center border transition ${
+                                  simDate.id === d.id 
+                                    ? 'bg-emerald-600 border-emerald-400 text-white font-bold' 
+                                    : 'bg-slate-800/80 border-slate-700 text-slate-300'
+                                }`}
+                              >
+                                {d.badge && <span className="block text-[8px] text-amber-300 font-black uppercase">{d.badge}</span>}
+                                <span className="block text-[11px] leading-tight">{d.day}</span>
+                                <span className="block text-[9px] opacity-80">{d.date}</span>
+                              </button>
+                            ))}
+                          </div>
+
+                          {/* TIME PERIOD TABS */}
+                          <div className="flex bg-slate-900 p-1 rounded-xl border border-slate-800">
+                            {[
+                              { id: 'morning', label: '🌅 Morning' },
+                              { id: 'afternoon', label: '☀️ Afternoon' },
+                              { id: 'evening', label: '🌙 Evening' }
+                            ].map((p) => (
+                              <button
+                                key={p.id}
+                                onClick={() => {
+                                  setSimPeriod(p.id as any);
+                                  setSimTimeSlot(p.id === 'morning' ? '10:45 AM' : p.id === 'afternoon' ? '02:30 PM' : '06:30 PM');
+                                }}
+                                className={`flex-1 py-1 rounded-lg text-[10px] font-bold transition ${
+                                  simPeriod === p.id ? 'bg-slate-800 text-emerald-400 shadow-sm' : 'text-slate-400 hover:text-white'
+                                }`}
+                              >
+                                {p.label}
+                              </button>
+                            ))}
+                          </div>
+
+                          {/* TIME SLOT CHIPS */}
+                          <div className="grid grid-cols-3 gap-1.5">
+                            {(simPeriod === 'morning' 
+                              ? ['08:30 AM', '09:45 AM', '10:45 AM', '11:30 AM']
+                              : simPeriod === 'afternoon'
+                              ? ['01:15 PM', '02:30 PM', '03:45 PM', '04:30 PM']
+                              : ['05:30 PM', '06:30 PM', '07:15 PM']
+                            ).map((slot) => (
+                              <button
+                                key={slot}
+                                onClick={() => setSimTimeSlot(slot)}
+                                className={`py-1.5 px-2 rounded-lg text-[11px] font-bold border transition text-center ${
+                                  simTimeSlot === slot 
+                                    ? 'bg-emerald-600 border-emerald-400 text-white shadow' 
+                                    : 'bg-slate-800/90 border-slate-700 text-slate-300 hover:border-slate-600'
+                                }`}
+                              >
+                                {slot}
+                              </button>
+                            ))}
+                          </div>
+
+                          {/* CONFIRMED TIME HIGHLIGHT */}
+                          <div className="bg-emerald-950/40 border border-emerald-600/40 rounded-xl p-2 flex items-center justify-between text-[10px]">
+                            <div className="flex items-center space-x-1.5">
+                              <span className="text-base">🗓️</span>
+                              <div>
+                                <p className="font-bold text-emerald-300">Confirmed Booking Slot:</p>
+                                <p className="text-white font-semibold">{simDate.day} ({simDate.date}) at {simTimeSlot}</p>
+                              </div>
+                            </div>
+                            <span className="bg-emerald-500 text-slate-950 font-black px-2 py-0.5 rounded text-[9px]">READY</span>
+                          </div>
+                        </div>
+
+                        {/* 4. ADDRESS & RECEIPT */}
+                        <div className="bg-slate-800/60 rounded-2xl p-3 border border-slate-700/60 space-y-2">
+                          <span className="font-bold text-slate-200 text-xs">4. Location & Payment</span>
+                          
+                          <div className="flex space-x-1.5">
+                            {['🏠 Home', '🏢 Office', '👵 Parents'].map((preset) => (
+                              <button
+                                key={preset}
+                                onClick={() => setSimAddress(preset.includes('Home') ? '742 Evergreen Terrace, Apt 4B, New York' : preset.includes('Office') ? '450 Lexington Ave, Fl 18' : '128 Central Park South')}
+                                className="px-2 py-1 rounded-lg text-[10px] bg-slate-800 border border-slate-700 text-slate-300 font-semibold"
+                              >
+                                {preset}
+                              </button>
+                            ))}
+                          </div>
+
+                          <p className="text-[11px] text-slate-300 bg-slate-900/90 p-2 rounded-xl border border-slate-800">
+                            📍 {simAddress}
+                          </p>
+
+                          {/* RECEIPT */}
+                          <div className="bg-slate-900/60 rounded-xl p-2 text-[10px] space-y-1 text-slate-400">
+                            <div className="flex justify-between">
+                              <span>Specialty Session ({simCategory.name})</span>
+                              <span className="text-slate-200 font-bold">${simCategory.basePriceUSD}.00</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span>In-Home Transit & Sterilized Kit</span>
+                              <span className="text-emerald-400 font-bold">FREE INCLUDED</span>
+                            </div>
+                            <div className="flex justify-between pt-1 border-t border-slate-800 text-xs font-black text-white">
+                              <span>Total Payable (Pay After Visit)</span>
+                              <span className="text-emerald-400">${simCategory.basePriceUSD}.00</span>
+                            </div>
+                          </div>
+
+                          {/* SUBMIT BUTTON */}
+                          <button
+                            onClick={async () => {
+                              try {
+                                await fetch(`${API_BASE}/requests`, {
+                                  method: 'POST',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({
+                                    createdByUserRole: 'PATIENT',
+                                    categoryId: simCategory.id,
+                                    address: {
+                                      addressLine: simAddress,
+                                      city: 'New York',
+                                      pinCode: '10024',
+                                      coordinates: { latitude: 40.7850, longitude: -73.9680 }
+                                    },
+                                    painAreas: simPainAreas,
+                                    conditionDescription: `[Pain Level ${simPainSeverity}/10] Acute session requested from mobile simulator.`,
+                                    preferredTimeWindow: `${simDate.day} (${simDate.date}) at ${simTimeSlot}`,
+                                    urgency: simPainSeverity >= 8 ? 'URGENT' : 'NORMAL'
+                                  })
+                                });
+                                setSimBookSuccess(true);
+                                fetchData();
+                                setTimeout(() => setSimBookSuccess(false), 4000);
+                              } catch (e) {
+                                alert('Request logged in offline preview mode.');
+                              }
+                            }}
+                            className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold py-2.5 rounded-xl text-xs transition shadow-md flex items-center justify-center space-x-1.5"
+                          >
+                            <span>Confirm In-Home Visit (${simCategory.basePriceUSD}.00) →</span>
+                          </button>
+
+                          {simBookSuccess && (
+                            <div className="bg-emerald-500 text-slate-950 text-[11px] font-bold p-2 rounded-xl text-center animate-bounce">
+                              🎉 Visit Requested! Check Pending Triage Queue above.
+                            </div>
+                          )}
+                        </div>
+
+                        {/* 5. ACTIVE APPOINTMENT PREVIEW */}
+                        {appointments.length > 0 && (
+                          <div className="bg-slate-800/80 rounded-2xl p-3 border border-slate-700 space-y-2">
+                            <div className="flex justify-between items-center">
+                              <span className="text-[10px] font-bold text-amber-300 bg-amber-900/40 border border-amber-600/40 px-2 py-0.5 rounded-full uppercase">
+                                {appointments[0].status.replace('_', ' ')}
+                              </span>
+                              <span className="text-[10px] text-emerald-400 font-mono font-bold">${appointments[0].totalAmount}</span>
+                            </div>
+                            <p className="font-bold text-white text-xs">{appointments[0].request?.category?.name}</p>
+                            <p className="text-[10px] text-slate-400">Assigned Clinician: <strong className="text-white">{appointments[0].therapist?.user?.fullName}</strong></p>
+
+                            <div className="bg-emerald-950/40 border border-emerald-600/40 p-2 rounded-xl text-center">
+                              <p className="text-[9px] text-emerald-400 uppercase font-bold">Cash Collection Security Code (Show Therapist):</p>
+                              <p className="text-sm font-black text-emerald-300 tracking-widest font-mono">{appointments[0].cashConfirmationOtp || '7492'}</p>
+                            </div>
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      /* CLINICIAN COCKPIT VIEW IN SIMULATOR */
+                      <div className="space-y-3">
+                        <div className="bg-slate-800 p-3 rounded-2xl border border-slate-700 flex items-center space-x-2.5">
+                          <div className="w-9 h-9 rounded-full bg-sky-600 flex items-center justify-center font-bold text-white text-xs">
+                            SJ
+                          </div>
+                          <div>
+                            <p className="font-bold text-white text-xs">Dr. Sarah Jenkins, PT, DPT</p>
+                            <p className="text-[9px] text-sky-400">Senior Orthopedic Clinician • NY Board</p>
+                          </div>
+                        </div>
+
+                        {appointments.length > 0 ? (
+                          <div className="bg-slate-800/90 rounded-2xl p-3 border border-slate-700 space-y-2.5">
+                            <div className="flex justify-between items-center">
+                              <span className="font-bold text-xs text-white">Assigned Home Visit</span>
+                              <span className="text-[9px] bg-slate-700 text-slate-300 px-1.5 py-0.5 rounded font-mono">10:00 AM</span>
+                            </div>
+                            <p className="text-[11px] text-slate-300">Patient: <strong className="text-white">{appointments[0].patient?.fullName}</strong></p>
+                            <p className="text-[10px] text-slate-400">📍 {appointments[0].request?.address?.addressLine}</p>
+
+                            <div className="pt-2 border-t border-slate-700 space-y-1.5">
+                              <p className="text-[9px] font-bold text-slate-400 uppercase">Update Visit Status:</p>
+                              <div className="grid grid-cols-2 gap-1.5">
+                                <button 
+                                  onClick={async () => {
+                                    await fetch(`${API_BASE}/appointments/${appointments[0].id}/status`, {
+                                      method: 'PATCH',
+                                      headers: { 'Content-Type': 'application/json' },
+                                      body: JSON.stringify({ status: 'EN_ROUTE' })
+                                    });
+                                    fetchData();
+                                  }}
+                                  className="bg-sky-600 hover:bg-sky-500 text-white py-1.5 rounded-lg text-[10px] font-bold"
+                                >
+                                  🚗 1. On The Way
+                                </button>
+                                <button 
+                                  onClick={async () => {
+                                    await fetch(`${API_BASE}/appointments/${appointments[0].id}/status`, {
+                                      method: 'PATCH',
+                                      headers: { 'Content-Type': 'application/json' },
+                                      body: JSON.stringify({ status: 'ARRIVED' })
+                                    });
+                                    fetchData();
+                                  }}
+                                  className="bg-indigo-600 hover:bg-indigo-500 text-white py-1.5 rounded-lg text-[10px] font-bold"
+                                >
+                                  🏡 2. Arrived
+                                </button>
+                                <button 
+                                  onClick={async () => {
+                                    await fetch(`${API_BASE}/appointments/${appointments[0].id}/status`, {
+                                      method: 'PATCH',
+                                      headers: { 'Content-Type': 'application/json' },
+                                      body: JSON.stringify({ status: 'IN_SESSION' })
+                                    });
+                                    fetchData();
+                                  }}
+                                  className="bg-purple-600 hover:bg-purple-500 text-white py-1.5 rounded-lg text-[10px] font-bold"
+                                >
+                                  🩺 3. In Session
+                                </button>
+                                <button 
+                                  onClick={async () => {
+                                    await fetch(`${API_BASE}/appointments/${appointments[0].id}/status`, {
+                                      method: 'PATCH',
+                                      headers: { 'Content-Type': 'application/json' },
+                                      body: JSON.stringify({ status: 'COMPLETED', clinicalNotes: 'Lumbar mobilization and taught stretches.' })
+                                    });
+                                    fetchData();
+                                  }}
+                                  className="bg-emerald-600 hover:bg-emerald-500 text-white py-1.5 rounded-lg text-[10px] font-bold"
+                                >
+                                  ✅ 4. Complete
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="bg-slate-800 p-6 rounded-2xl text-center text-slate-400">
+                            <p className="text-xs">No active appointment assigned yet.</p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
