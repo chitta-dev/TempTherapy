@@ -3,7 +3,9 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-    "start": "expo start --offline",
+    "start": "expo start -c",
+    "start:go": "expo start --go -c",
+    "start:offline": "expo start --offline -c",
     "tunnel": "expo start --tunnel -c",
     "lan": "expo start --lan -c",
     "web": "expo start --web"

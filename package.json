@@ -12,7 +12,8 @@
     "start:web": "npm --prefix apps/web-admin run dev",
     "start:mobile": "npm --prefix apps/mobile start",
     "dev:all": "concurrently -n \"BACKEND,WEB,MOBILE\" -c \"blue.bold,green.bold,magenta.bold\" \"npm run start:backend\" \"npm run start:web\" \"npm run start:mobile\"",
-    "build:all": "npm --prefix packages/shared run build && npm --prefix apps/backend run build && npm --prefix apps/web-admin run build"
+    "build:all": "npm --prefix packages/shared run build && npm --prefix apps/backend run build && npm --prefix apps/web-admin run build",
+    "postinstall": "node scripts/patch-expo-asset.js"
   },
   "devDependencies": {
     "babel-preset-expo": "~57.0.11",
