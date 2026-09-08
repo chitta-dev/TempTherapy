@@ -15,7 +15,7 @@ import {
   Search, 
   Filter,
   LogOut,
-  Stethoscope, Smartphone, Send, Check
+  Stethoscope, Smartphone, Send, Check, X
 } from 'lucide-react';
 import { 
   THERAPY_CATEGORIES, 
@@ -88,6 +88,12 @@ export default function App() {
     entryNotes: 'Door buzzer #402. Elevator on left.'
   });
   const [simProfileSavedNotice, setSimProfileSavedNotice] = useState(false);
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
+
+  const showToast = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 4000);
+  };
 
   // Fetch initial data
   const fetchData = async () => {
@@ -137,11 +143,12 @@ export default function App() {
       const data = await res.json();
       if (data.success) {
         setSelectedRequest(null);
+        showToast('Therapist dispatched and appointment scheduled!', 'success');
         fetchData();
         setActiveTab('appointments');
       }
     } catch (e) {
-      alert('Therapist assigned in local session.');
+      showToast('Therapist assigned in local session.', 'info');
       setSelectedRequest(null);
     }
   };
@@ -150,7 +157,7 @@ export default function App() {
   const handleCreatePhoneRequest = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newPatientName || !newPatientPhone || !newAddress) {
-      alert('Please fill in required fields.');
+      showToast('Please fill in required fields (Patient Name, Phone, and Address).', 'error');
       return;
     }
 
@@ -180,11 +187,12 @@ export default function App() {
         setNewPatientPhone('');
         setNewAddress('');
         setNewSymptoms('');
+        showToast('Phone visit request created and added to triage queue!', 'success');
         fetchData();
         setActiveTab('queue');
       }
     } catch (e) {
-      alert('Request created locally.');
+      showToast('Request created locally.', 'info');
       setActiveTab('queue');
     }
   };
@@ -1030,7 +1038,7 @@ export default function App() {
                                     fetchData();
                                     setTimeout(() => setSimBookSuccess(false), 4000);
                                   } catch (e) {
-                                    alert('Request logged in offline preview mode.');
+                                    showToast('Request logged in offline preview mode.', 'info');
                                   }
                                 }}
                                 className="w-full bg-teal-600 hover:bg-teal-500 text-white font-extrabold py-2.5 rounded-xl text-xs transition shadow-xs flex items-center justify-center space-x-1.5"
@@ -1327,6 +1335,37 @@ export default function App() {
           </div>
         )}
       </main>
+
+      {/* Floating Clinical Toast Notification */}
+      {toast && (
+        <div className="fixed top-5 right-5 z-50 max-w-sm w-full bg-white shadow-2xl rounded-2xl border border-slate-200/80 p-4 flex items-start space-x-3 transition-all duration-300">
+          <div className={`p-2 rounded-xl flex-shrink-0 ${
+            toast.type === 'success' ? 'bg-emerald-100 text-emerald-600' :
+            toast.type === 'error' ? 'bg-rose-100 text-rose-600' :
+            'bg-teal-100 text-teal-600'
+          }`}>
+            {toast.type === 'success' && <CheckCircle2 className="w-5 h-5" />}
+            {toast.type === 'error' && <AlertCircle className="w-5 h-5" />}
+            {toast.type === 'info' && <Activity className="w-5 h-5" />}
+          </div>
+          <div className="flex-1 pt-0.5">
+            <p className={`text-xs font-bold ${
+              toast.type === 'success' ? 'text-emerald-950' :
+              toast.type === 'error' ? 'text-rose-950' :
+              'text-teal-950'
+            }`}>
+              {toast.type === 'success' ? 'Action Completed' : toast.type === 'error' ? 'Attention Required' : 'Clinical Notice'}
+            </p>
+            <p className="text-xs text-slate-600 mt-0.5 leading-relaxed font-medium">{toast.message}</p>
+          </div>
+          <button 
+            onClick={() => setToast(null)} 
+            className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100 transition"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
     </div>
   );
 }

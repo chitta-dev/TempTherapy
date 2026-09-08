@@ -7,9 +7,9 @@ import {
   TouchableOpacity, 
   TextInput, 
   SafeAreaView, 
-  Alert, 
   StatusBar,
-  Platform
+  Platform,
+  Modal
 } from 'react-native';
 import { 
   THERAPY_CATEGORIES, 
@@ -80,6 +80,53 @@ export default function App() {
   const [roleMode, setRoleMode] = useState<'PATIENT' | 'THERAPIST'>('PATIENT');
   const [activeTab, setActiveTab] = useState<'request' | 'status' | 'profile'>('request');
   
+  // Custom Toast Notification State
+  const [toast, setToast] = useState<{
+    visible: boolean;
+    type: 'SUCCESS' | 'INFO' | 'WARNING' | 'ERROR';
+    title: string;
+    message: string;
+  }>({
+    visible: false,
+    type: 'SUCCESS',
+    title: '',
+    message: ''
+  });
+
+  const showToast = (type: 'SUCCESS' | 'INFO' | 'WARNING' | 'ERROR', title: string, message: string) => {
+    setToast({ visible: true, type, title, message });
+    setTimeout(() => {
+      setToast(prev => ({ ...prev, visible: false }));
+    }, 4000);
+  };
+
+  // Custom Booking Confirmation Modal State
+  const [bookingModal, setBookingModal] = useState<{
+    visible: boolean;
+    details?: {
+      specialty: string;
+      window: string;
+      address: string;
+      amount: number;
+      patientName: string;
+    };
+  }>({
+    visible: false
+  });
+
+  // Custom Call / Chat Modal State
+  const [commModal, setCommModal] = useState<{
+    visible: boolean;
+    mode: 'CALL' | 'CHAT';
+    name: string;
+    phone: string;
+  }>({
+    visible: false,
+    mode: 'CALL',
+    name: '',
+    phone: ''
+  });
+
   // Patient Personal Info State
   const [patientProfile, setPatientProfile] = useState({
     fullName: 'Johnathan Doe',
@@ -95,8 +142,6 @@ export default function App() {
     primaryAddress: '742 Evergreen Terrace, Apt 4B, New York',
     entryNotes: 'Door buzzer #402. Elevator on left.'
   });
-
-  const [profileSavedNotice, setProfileSavedNotice] = useState(false);
 
   // Booking Form Interactive State
   const [selectedCategory, setSelectedCategory] = useState<TherapyCategory>(THERAPY_CATEGORIES[0]);
@@ -170,9 +215,7 @@ export default function App() {
 
   // Save Profile Handler
   const handleSaveProfile = () => {
-    setProfileSavedNotice(true);
-    Alert.alert('✅ Profile Saved', 'Your personal details, emergency contact, and medical profile have been updated.');
-    setTimeout(() => setProfileSavedNotice(false), 3000);
+    showToast('SUCCESS', 'Profile Saved Successfully', 'Your contact details, emergency info, and medical precautions have been updated.');
   };
 
   // Submit Home Visit Request
@@ -200,25 +243,36 @@ export default function App() {
       });
       const data = await res.json();
       if (data.success) {
-        Alert.alert(
-          '🎉 In-Home Visit Confirmed!',
-          `Session scheduled for ${preferredWindowText} for ${patientProfile.fullName}. A certified physiotherapist is being assigned.`
-        );
+        setBookingModal({
+          visible: true,
+          details: {
+            specialty: selectedCategory.name,
+            window: preferredWindowText,
+            address: patientProfile.primaryAddress,
+            amount: selectedCategory.basePriceUSD,
+            patientName: patientProfile.fullName
+          }
+        });
         refreshActiveData();
-        setActiveTab('status');
       }
     } catch (e) {
-      Alert.alert(
-        'Visit Logged (Offline Mode)',
-        `Scheduled for ${preferredWindowText}. You can track clinician arrival.`
-      );
-      setActiveTab('status');
+      setBookingModal({
+        visible: true,
+        details: {
+          specialty: selectedCategory.name,
+          window: preferredWindowText,
+          address: patientProfile.primaryAddress,
+          amount: selectedCategory.basePriceUSD,
+          patientName: patientProfile.fullName
+        }
+      });
     }
   };
 
   // Therapist Status Action Updates
   const handleUpdatePtStatus = async (nextStatus: any) => {
     setPtStatus(nextStatus);
+    showToast('SUCCESS', 'Status Updated', `Session status advanced to ${nextStatus.replace('_', ' ')}.`);
     if (activeAppointment) {
       try {
         await fetch(`${API_BASE}/appointments/${activeAppointment.id}/status`, {
@@ -240,6 +294,156 @@ export default function App() {
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
+
+      {/* ========================================================================= */}
+      {/* CUSTOM DESIGNER TOAST NOTIFICATION (TOP FLOATING) */}
+      {/* ========================================================================= */}
+      {toast.visible && (
+        <View style={[
+          styles.customToast,
+          toast.type === 'SUCCESS' && styles.toastSuccess,
+          toast.type === 'INFO' && styles.toastInfo,
+          toast.type === 'WARNING' && styles.toastWarning,
+          toast.type === 'ERROR' && styles.toastError,
+        ]}>
+          <View style={[
+            styles.toastIconBox,
+            toast.type === 'SUCCESS' && { backgroundColor: '#ccfbf1' },
+            toast.type === 'INFO' && { backgroundColor: '#e0f2fe' },
+            toast.type === 'WARNING' && { backgroundColor: '#fef3c7' },
+            toast.type === 'ERROR' && { backgroundColor: '#fee2e2' },
+          ]}>
+            <Text style={styles.toastIconText}>
+              {toast.type === 'SUCCESS' ? '✓' : toast.type === 'INFO' ? 'ℹ️' : toast.type === 'WARNING' ? '⚠️' : '✕'}
+            </Text>
+          </View>
+          <View style={{ flex: 1, marginLeft: 10 }}>
+            <Text style={styles.toastTitle}>{toast.title}</Text>
+            <Text style={styles.toastMessage}>{toast.message}</Text>
+          </View>
+          <TouchableOpacity onPress={() => setToast({ ...toast, visible: false })} style={styles.toastCloseBtn}>
+            <Text style={styles.toastCloseText}>✕</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {/* ========================================================================= */}
+      {/* CUSTOM BOOKING CONFIRMATION MODAL POPUP */}
+      {/* ========================================================================= */}
+      {bookingModal.visible && (
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalContainer}>
+            <View style={styles.modalHeaderGlow}>
+              <View style={styles.modalSuccessCircle}>
+                <Text style={styles.modalSuccessCircleText}>✓</Text>
+              </View>
+            </View>
+
+            <Text style={styles.modalHeadline}>In-Home Visit Confirmed!</Text>
+            <Text style={styles.modalDescription}>
+              Your appointment request has been approved. A certified clinical physiotherapist is assigned for your home visit.
+            </Text>
+
+            {/* RECEIPT SUMMARY CARD */}
+            <View style={styles.modalReceiptCard}>
+              <View style={styles.modalReceiptRow}>
+                <Text style={styles.modalReceiptLabel}>Therapy Specialty</Text>
+                <Text style={styles.modalReceiptValue}>{bookingModal.details?.specialty}</Text>
+              </View>
+              <View style={styles.modalReceiptRow}>
+                <Text style={styles.modalReceiptLabel}>Scheduled Slot</Text>
+                <Text style={[styles.modalReceiptValue, { color: '#0d9488' }]}>{bookingModal.details?.window}</Text>
+              </View>
+              <View style={styles.modalReceiptRow}>
+                <Text style={styles.modalReceiptLabel}>Patient Name</Text>
+                <Text style={styles.modalReceiptValue}>{bookingModal.details?.patientName}</Text>
+              </View>
+              <View style={styles.modalReceiptRow}>
+                <Text style={styles.modalReceiptLabel}>Home Address</Text>
+                <Text style={styles.modalReceiptValue} numberOfLines={1}>{bookingModal.details?.address}</Text>
+              </View>
+              <View style={styles.modalReceiptDivider} />
+              <View style={styles.modalReceiptRow}>
+                <Text style={[styles.modalReceiptLabel, { fontWeight: '800', color: '#0f172a' }]}>Total Fee (Pay At Home)</Text>
+                <Text style={styles.modalReceiptTotal}>${bookingModal.details?.amount}.00</Text>
+              </View>
+            </View>
+
+            {/* ACTION BUTTONS */}
+            <TouchableOpacity 
+              style={styles.modalPrimaryBtn}
+              onPress={() => {
+                setBookingModal({ visible: false });
+                setActiveTab('status');
+              }}
+            >
+              <Text style={styles.modalPrimaryBtnText}>Track Clinician Live Status →</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={styles.modalSecondaryBtn}
+              onPress={() => setBookingModal({ visible: false })}
+            >
+              <Text style={styles.modalSecondaryBtnText}>Done</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
+
+      {/* ========================================================================= */}
+      {/* CUSTOM CALL / CHAT MODAL POPUP */}
+      {/* ========================================================================= */}
+      {commModal.visible && (
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalContainer}>
+            <View style={[styles.modalHeaderGlow, { backgroundColor: '#e0f2fe' }]}>
+              <Text style={{ fontSize: 26 }}>{commModal.mode === 'CALL' ? '📞' : '💬'}</Text>
+            </View>
+
+            <Text style={styles.modalHeadline}>
+              {commModal.mode === 'CALL' ? 'Secure Clinical Call' : 'Direct Clinician Chat'}
+            </Text>
+            <Text style={styles.modalDescription}>
+              {commModal.mode === 'CALL' 
+                ? `Connecting you with ${commModal.name} on their verified mobile line.`
+                : `Send a direct clinical inquiry or building entrance tip to ${commModal.name}.`}
+            </Text>
+
+            <View style={styles.commClinicianCard}>
+              <View style={styles.commAvatar}>
+                <Text style={styles.commAvatarText}>SJ</Text>
+              </View>
+              <View style={{ flex: 1, marginLeft: 10 }}>
+                <Text style={styles.commName}>{commModal.name}</Text>
+                <Text style={styles.commPhone}>{commModal.phone} • Verified Clinician</Text>
+              </View>
+            </View>
+
+            <TouchableOpacity 
+              style={[styles.modalPrimaryBtn, { backgroundColor: commModal.mode === 'CALL' ? '#0284c7' : '#0d9488' }]}
+              onPress={() => {
+                showToast(
+                  'SUCCESS', 
+                  commModal.mode === 'CALL' ? 'Call Connected' : 'Message Sent', 
+                  commModal.mode === 'CALL' ? 'Dialing secure line to Dr. Sarah Jenkins...' : 'Clinician has received your message.'
+                );
+                setCommModal({ visible: false, mode: 'CALL', name: '', phone: '' });
+              }}
+            >
+              <Text style={styles.modalPrimaryBtnText}>
+                {commModal.mode === 'CALL' ? 'Start Phone Call Now' : 'Send Message'}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={styles.modalSecondaryBtn}
+              onPress={() => setCommModal({ visible: false, mode: 'CALL', name: '', phone: '' })}
+            >
+              <Text style={styles.modalSecondaryBtnText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
       
       {/* 1. TOP CALMING HEALTHCARE HEADER */}
       <View style={styles.topHeader}>
@@ -452,7 +656,7 @@ export default function App() {
                 />
               </View>
 
-              {/* SECTION 3: INTERACTIVE DATE & TIME PICKER (NO PLAIN TEXT) */}
+              {/* SECTION 3: INTERACTIVE DATE & TIME PICKER */}
               <View style={styles.sectionWrapper}>
                 <View style={styles.sectionHeaderRow}>
                   <Text style={styles.sectionTitle}>3. Preferred Visit Date & Time</Text>
@@ -666,13 +870,23 @@ export default function App() {
                 <View style={styles.clinicianActionRow}>
                   <TouchableOpacity 
                     style={styles.clinicianActionBtn}
-                    onPress={() => Alert.alert('Calling Clinician', 'Connecting secure line to Dr. Sarah Jenkins...')}
+                    onPress={() => setCommModal({
+                      visible: true,
+                      mode: 'CALL',
+                      name: activeAppointment?.therapist?.user?.fullName || 'Dr. Sarah Jenkins, PT, DPT',
+                      phone: '+1 (555) 987-6543'
+                    })}
                   >
                     <Text style={styles.clinicianActionText}>📞 Call Clinician</Text>
                   </TouchableOpacity>
                   <TouchableOpacity 
                     style={styles.clinicianActionBtn}
-                    onPress={() => Alert.alert('Chat Active', 'Message sent to your assigned clinician.')}
+                    onPress={() => setCommModal({
+                      visible: true,
+                      mode: 'CHAT',
+                      name: activeAppointment?.therapist?.user?.fullName || 'Dr. Sarah Jenkins, PT, DPT',
+                      phone: '+1 (555) 987-6543'
+                    })}
                   >
                     <Text style={styles.clinicianActionText}>💬 Send Message</Text>
                   </TouchableOpacity>
@@ -943,12 +1157,6 @@ export default function App() {
               <TouchableOpacity style={styles.saveProfileBtn} onPress={handleSaveProfile}>
                 <Text style={styles.saveProfileBtnText}>💾 Save Personal & Medical Details</Text>
               </TouchableOpacity>
-
-              {profileSavedNotice && (
-                <View style={styles.savedNotice}>
-                  <Text style={styles.savedNoticeText}>✅ All personal information saved and synchronized!</Text>
-                </View>
-              )}
             </ScrollView>
           )}
         </View>
@@ -1057,12 +1265,235 @@ export default function App() {
 }
 
 const styles = StyleSheet.create({
-  // EYE-FRIENDLY CALMING PALETTE
+  // CONTAINER
   container: {
     flex: 1,
     backgroundColor: '#f8fafc',
   },
   
+  // CUSTOM TOAST FLOATING BANNER
+  customToast: {
+    position: 'absolute',
+    top: Platform.OS === 'ios' ? 54 : 20,
+    left: 14,
+    right: 14,
+    zIndex: 9999,
+    borderRadius: 14,
+    padding: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.12,
+    shadowRadius: 10,
+    elevation: 8,
+    borderWidth: 1.5,
+  },
+  toastSuccess: {
+    backgroundColor: '#f0fdfa',
+    borderColor: '#2dd4bf',
+  },
+  toastInfo: {
+    backgroundColor: '#f0f9ff',
+    borderColor: '#38bdf8',
+  },
+  toastWarning: {
+    backgroundColor: '#fffbeb',
+    borderColor: '#f59e0b',
+  },
+  toastError: {
+    backgroundColor: '#fef2f2',
+    borderColor: '#f87171',
+  },
+  toastIconBox: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  toastIconText: {
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
+  toastTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#0f172a',
+  },
+  toastMessage: {
+    fontSize: 11,
+    color: '#475569',
+    marginTop: 1,
+  },
+  toastCloseBtn: {
+    padding: 4,
+  },
+  toastCloseText: {
+    fontSize: 14,
+    color: '#94a3b8',
+    fontWeight: 'bold',
+  },
+
+  // CUSTOM MODAL POPUP BACKDROP
+  modalBackdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(15, 23, 42, 0.65)',
+    zIndex: 10000,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  modalContainer: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 24,
+    width: '100%',
+    maxWidth: 380,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.25,
+    shadowRadius: 18,
+    elevation: 10,
+  },
+  modalHeaderGlow: {
+    width: 68,
+    height: 68,
+    borderRadius: 34,
+    backgroundColor: '#f0fdfa',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
+  },
+  modalSuccessCircle: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: '#0d9488',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#0d9488',
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  modalSuccessCircleText: {
+    fontSize: 26,
+    fontWeight: '900',
+    color: '#ffffff',
+  },
+  modalHeadline: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#0f172a',
+    textAlign: 'center',
+  },
+  modalDescription: {
+    fontSize: 12,
+    color: '#64748b',
+    textAlign: 'center',
+    marginTop: 4,
+    marginBottom: 16,
+    lineHeight: 18,
+  },
+  modalReceiptCard: {
+    backgroundColor: '#f8fafc',
+    borderRadius: 14,
+    padding: 14,
+    width: '100%',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    marginBottom: 18,
+  },
+  modalReceiptRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 6,
+  },
+  modalReceiptLabel: {
+    fontSize: 11,
+    color: '#64748b',
+  },
+  modalReceiptValue: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#0f172a',
+  },
+  modalReceiptDivider: {
+    height: 1,
+    backgroundColor: '#e2e8f0',
+    marginVertical: 6,
+  },
+  modalReceiptTotal: {
+    fontSize: 16,
+    fontWeight: '900',
+    color: '#0d9488',
+  },
+  modalPrimaryBtn: {
+    backgroundColor: '#0d9488',
+    paddingVertical: 14,
+    borderRadius: 14,
+    width: '100%',
+    alignItems: 'center',
+    shadowColor: '#0d9488',
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  modalPrimaryBtnText: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  modalSecondaryBtn: {
+    marginTop: 10,
+    paddingVertical: 8,
+  },
+  modalSecondaryBtnText: {
+    color: '#64748b',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+
+  // CALL & CHAT MODAL
+  commClinicianCard: {
+    backgroundColor: '#f8fafc',
+    borderRadius: 12,
+    padding: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    width: '100%',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    marginBottom: 18,
+  },
+  commAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#0284c7',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  commAvatarText: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  commName: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#0f172a',
+  },
+  commPhone: {
+    fontSize: 11,
+    color: '#0284c7',
+    marginTop: 1,
+  },
+
   // TOP HEADER
   topHeader: {
     backgroundColor: '#ffffff',
@@ -2127,21 +2558,6 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 14,
     fontWeight: '800',
-  },
-  savedNotice: {
-    backgroundColor: '#d1fae5',
-    borderColor: '#6ee7b7',
-    borderWidth: 1,
-    padding: 10,
-    borderRadius: 10,
-    marginHorizontal: 14,
-    marginTop: 10,
-    alignItems: 'center',
-  },
-  savedNoticeText: {
-    color: '#065f46',
-    fontSize: 12,
-    fontWeight: '700',
   },
 
   // THERAPIST COCKPIT
