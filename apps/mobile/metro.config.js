@@ -2,17 +2,18 @@ const { getDefaultConfig } = require('expo/metro-config');
 const path = require('path');
 
 const projectRoot = __dirname;
-const monorepoRoot = path.resolve(projectRoot, '../..');
+const workspaceRoot = path.resolve(projectRoot, '../..');
 
 const config = getDefaultConfig(projectRoot);
 
-// Watch all files within the monorepo
-config.watchFolders = [monorepoRoot];
+// Only watch the shared package to prevent Windows filesystem watcher hang
+config.watchFolders = [
+  path.resolve(workspaceRoot, 'packages/shared'),
+];
 
-// Let Metro resolve packages from both mobile and root node_modules
 config.resolver.nodeModulesPaths = [
   path.resolve(projectRoot, 'node_modules'),
-  path.resolve(monorepoRoot, 'node_modules'),
+  path.resolve(workspaceRoot, 'node_modules'),
 ];
 
 module.exports = config;
