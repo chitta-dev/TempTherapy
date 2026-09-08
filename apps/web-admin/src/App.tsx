@@ -15,7 +15,7 @@ import {
   Search, 
   Filter,
   LogOut,
-  Stethoscope
+  Stethoscope, Smartphone, Send, Check
 } from 'lucide-react';
 import { 
   THERAPY_CATEGORIES, 
@@ -29,7 +29,7 @@ import {
 const API_BASE = 'http://localhost:4000/api';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'queue' | 'appointments' | 'therapists' | 'new-request'>('queue');
+  const [activeTab, setActiveTab] = useState<'queue' | 'appointments' | 'therapists' | 'new-request' | 'mobile-sim'>('queue');
   const [currentUser, setCurrentUser] = useState<User>({
     id: 'usr_desk_1',
     email: 'desk.alex@therapycare.com',
@@ -652,6 +652,132 @@ export default function App() {
                 >
                   Approve & Dispatch
                 </button>
+              </div>
+            </div>
+          </div>
+        )}
+      
+        {/* TAB: MOBILE APP SIMULATOR */}
+        {activeTab === 'mobile-sim' && (
+          <div className="max-w-4xl mx-auto space-y-6">
+            <div className="text-center">
+              <h2 className="text-xl font-bold text-slate-900">📱 Mobile App Simulator (Patient & Therapist)</h2>
+              <p className="text-xs text-slate-500 mt-1">Test the full iOS/Android mobile user journey directly in your browser with real-time API sync!</p>
+            </div>
+
+            <div className="flex justify-center">
+              <div className="w-[380px] bg-slate-950 rounded-[44px] p-4 shadow-2xl border-4 border-slate-800">
+                <div className="w-32 h-4 bg-slate-900 rounded-full mx-auto mb-3"></div>
+                <div className="bg-slate-50 rounded-[32px] p-4 text-slate-900 min-h-[600px] max-h-[600px] overflow-y-auto space-y-4 text-xs">
+                  <div className="bg-emerald-600 text-white p-3.5 rounded-2xl shadow-sm">
+                    <p className="text-[10px] text-emerald-200 uppercase font-semibold">Patient Mobile App • SSO Active</p>
+                    <h3 className="text-sm font-bold mt-0.5">Johnathan Doe</h3>
+                    <p className="text-[11px] text-emerald-100">🔒 Location & Biometrics Verified</p>
+                  </div>
+
+                  <div className="bg-white p-3.5 rounded-2xl border border-slate-200 space-y-2.5 shadow-xs">
+                    <h4 className="font-bold text-slate-900 text-xs">📍 Request In-Home Physiotherapy</h4>
+                    <p className="text-[11px] text-slate-600">Address: <strong>742 Evergreen Terrace, Apt 4B, New York</strong></p>
+                    <p className="text-[11px] text-slate-600">Specialty: <strong>Orthopedic & Spine Care ($45)</strong></p>
+                    <p className="text-[11px] text-slate-600">Pain Focus: <strong>Lower Back & Left Sciatic Nerve</strong></p>
+                    <button 
+                      onClick={async () => {
+                        await fetch('http://localhost:4000/api/requests', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({
+                            createdByUserRole: 'PATIENT',
+                            categoryId: 'cat_ortho',
+                            painAreas: ['Lower Back'],
+                            conditionDescription: 'Mobile app test request for acute back pain.',
+                            preferredTimeWindow: 'Tomorrow Morning (9 AM - 12 PM)'
+                          })
+                        });
+                        alert('Request submitted from mobile simulator! Check the Pending Triage Queue.');
+                        fetchData();
+                      }}
+                      className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2 rounded-xl text-xs transition shadow-xs flex items-center justify-center space-x-1.5"
+                    >
+                      <span>Submit In-Home Request</span>
+                    </button>
+                  </div>
+
+                  {appointments.length > 0 && (
+                    <div className="bg-white p-3.5 rounded-2xl border border-slate-200 space-y-2 shadow-xs">
+                      <div className="flex justify-between items-center">
+                        <span className="text-[10px] font-bold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full uppercase">
+                          {appointments[0].status.replace('_', ' ')}
+                        </span>
+                        <span className="text-[10px] text-slate-400 font-mono">${appointments[0].totalAmount}</span>
+                      </div>
+                      <h4 className="font-bold text-slate-900 text-xs">{appointments[0].request?.category?.name || 'Physiotherapy Visit'}</h4>
+                      <p className="text-[11px] text-slate-500">Therapist: <strong>{appointments[0].therapist?.user?.fullName}</strong></p>
+                      
+                      <div className="space-y-1 pt-2 border-t border-slate-100">
+                        <p className="text-[10px] font-bold text-slate-500 uppercase">Therapist Status Actions:</p>
+                        <div className="grid grid-cols-2 gap-1.5">
+                          <button 
+                            onClick={async () => {
+                              await fetch(`http://localhost:4000/api/appointments/${appointments[0].id}/status`, {
+                                method: 'PATCH',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ status: 'EN_ROUTE' })
+                              });
+                              fetchData();
+                            }}
+                            className="bg-sky-600 hover:bg-sky-500 text-white py-1.5 rounded-lg text-[10px] font-bold"
+                          >
+                            🚗 On The Way
+                          </button>
+                          <button 
+                            onClick={async () => {
+                              await fetch(`http://localhost:4000/api/appointments/${appointments[0].id}/status`, {
+                                method: 'PATCH',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ status: 'ARRIVED' })
+                              });
+                              fetchData();
+                            }}
+                            className="bg-indigo-600 hover:bg-indigo-500 text-white py-1.5 rounded-lg text-[10px] font-bold"
+                          >
+                            🏡 Arrived
+                          </button>
+                          <button 
+                            onClick={async () => {
+                              await fetch(`http://localhost:4000/api/appointments/${appointments[0].id}/status`, {
+                                method: 'PATCH',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ status: 'IN_SESSION' })
+                              });
+                              fetchData();
+                            }}
+                            className="bg-purple-600 hover:bg-purple-500 text-white py-1.5 rounded-lg text-[10px] font-bold"
+                          >
+                            🩺 In Session
+                          </button>
+                          <button 
+                            onClick={async () => {
+                              await fetch(`http://localhost:4000/api/appointments/${appointments[0].id}/status`, {
+                                method: 'PATCH',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ status: 'COMPLETED', clinicalNotes: 'Lumbar mobilization and taught stretches.' })
+                              });
+                              fetchData();
+                            }}
+                            className="bg-emerald-600 hover:bg-emerald-500 text-white py-1.5 rounded-lg text-[10px] font-bold"
+                          >
+                            ✅ Complete
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="bg-emerald-50 p-2 rounded-xl text-center border border-emerald-200 mt-2">
+                        <p className="text-[10px] text-emerald-800">Cash Collection Security Code:</p>
+                        <p className="text-sm font-bold text-emerald-900 font-mono tracking-widest">{appointments[0].cashConfirmationOtp || '7492'}</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           </div>
