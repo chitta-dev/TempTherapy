@@ -15,7 +15,7 @@ import {
   TherapyCategory, 
   Appointment, 
   ServiceRequest 
-} from '../../packages/shared/src/index';
+} from './src/shared';
 
 const API_BASE = 'http://localhost:4000/api';
 
