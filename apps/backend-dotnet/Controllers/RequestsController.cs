@@ -183,9 +183,12 @@ public class RequestsController : ControllerBase
 
             if (conflictingAppointment != null)
             {
+                var conflictTherapistName = therapist.User?.FullName?.StartsWith("Dr.") == true 
+                    ? therapist.User.FullName 
+                    : $"Dr. {therapist.User?.FullName ?? "Selected"}";
                 return BadRequest(new
                 {
-                    message = $"Therapist Dr. {therapist.User?.FullName ?? "Selected"} is already booked for an appointment from {conflictingAppointment.ScheduledStart:hh:mm tt} to {conflictingAppointment.ScheduledEnd:hh:mm tt}. Please choose an available time or therapist."
+                    message = $"Therapist {conflictTherapistName} is already booked for an appointment from {conflictingAppointment.ScheduledStart:hh:mm tt} to {conflictingAppointment.ScheduledEnd:hh:mm tt}. Please choose an available time or therapist."
                 });
             }
         }
@@ -272,8 +275,12 @@ public class RequestsController : ControllerBase
             await _hubContext.Clients.Group($"clinician_{therapist.Id}").SendAsync("ReceiveAppointmentAssigned", appointment);
         }
 
+        var therapistDisplayName = therapist != null
+            ? (therapist.User?.FullName?.StartsWith("Dr.") == true ? therapist.User.FullName : $"Dr. {therapist.User?.FullName ?? "Therapist"}")
+            : "";
+
         var message = therapist != null
-            ? $"Patient '{patient.FullName}' registered and Dr. {therapist.User?.FullName ?? "Therapist"} dispatched for {startTime:MMM dd, yyyy hh:mm tt}!"
+            ? $"Patient '{patient.FullName}' registered and {therapistDisplayName} dispatched for {startTime:MMM dd, yyyy hh:mm tt}!"
             : $"New patient '{patient.FullName}' registered and triage request #{newRequest.Id} created!";
 
         return Ok(new
