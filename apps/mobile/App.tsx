@@ -203,7 +203,7 @@ export default function App() {
         });
         setActiveAppointment(prev => prev ? { ...prev, paymentStatus: 'SETTLED', paymentMode: mode } : null);
       }
-      showToast('SUCCESS', '💰 Payment Settled', `Payment of $95.00 recorded via ${mode}. Ready for discharge.`);
+      showToast('SUCCESS', '💰 Payment Settled', `Payment of ₹850.00 recorded via ${mode}. Ready for discharge.`);
       setCompletionStep('OTP');
     } catch (e) {
       showToast('SUCCESS', 'Payment Recorded', `Payment recorded via ${mode} (local mode).`);
@@ -372,7 +372,7 @@ export default function App() {
             specialty: selectedCategory.name,
             window: preferredWindowText,
             address: patientProfile.primaryAddress,
-            amount: selectedCategory.basePriceUSD,
+            amount: selectedCategory.basePriceINR || selectedCategory.basePriceUSD,
             patientName: patientProfile.fullName
           }
         });
@@ -385,7 +385,7 @@ export default function App() {
           specialty: selectedCategory.name,
           window: preferredWindowText,
           address: patientProfile.primaryAddress,
-          amount: selectedCategory.basePriceUSD,
+          amount: selectedCategory.basePriceINR || selectedCategory.basePriceUSD,
           patientName: patientProfile.fullName
         }
       });
@@ -488,7 +488,7 @@ export default function App() {
               <View style={styles.modalReceiptDivider} />
               <View style={styles.modalReceiptRow}>
                 <Text style={[styles.modalReceiptLabel, { fontWeight: '800', color: '#0f172a' }]}>Total Fee (Pay At Home)</Text>
-                <Text style={styles.modalReceiptTotal}>${bookingModal.details?.amount}.00</Text>
+                <Text style={styles.modalReceiptTotal}>₹{bookingModal.details?.amount}.00</Text>
               </View>
             </View>
 
@@ -689,7 +689,7 @@ export default function App() {
                           </Text>
                           <View style={[styles.priceTag, isSelected && styles.priceTagSelected]}>
                             <Text style={[styles.priceTagText, isSelected && styles.priceTagTextSelected]}>
-                              ${cat.basePriceUSD}
+                              ₹{cat.basePriceINR || cat.basePriceUSD}
                             </Text>
                           </View>
                         </View>
@@ -897,7 +897,7 @@ export default function App() {
                 <View style={styles.receiptBox}>
                   <View style={styles.receiptRow}>
                     <Text style={styles.receiptLabel}>{selectedCategory.name} Session</Text>
-                    <Text style={styles.receiptVal}>${selectedCategory.basePriceUSD}.00</Text>
+                    <Text style={styles.receiptVal}>₹{selectedCategory.basePriceINR || selectedCategory.basePriceUSD}.00</Text>
                   </View>
                   <View style={styles.receiptRow}>
                     <Text style={styles.receiptLabel}>In-Home Clinician Transit</Text>
@@ -910,7 +910,7 @@ export default function App() {
                   <View style={styles.receiptDivider} />
                   <View style={styles.receiptTotalRow}>
                     <Text style={styles.receiptTotalLabel}>Total Amount Payable</Text>
-                    <Text style={styles.receiptTotalVal}>${selectedCategory.basePriceUSD}.00</Text>
+                    <Text style={styles.receiptTotalVal}>₹{selectedCategory.basePriceINR || selectedCategory.basePriceUSD}.00</Text>
                   </View>
                 </View>
 
@@ -938,7 +938,7 @@ export default function App() {
                 {/* BIG ACTION BUTTON */}
                 <TouchableOpacity style={styles.bookButton} onPress={handleSubmitRequest}>
                   <Text style={styles.bookButtonText}>
-                    Confirm In-Home Visit (${selectedCategory.basePriceUSD}.00) →
+                    Confirm In-Home Visit (₹{selectedCategory.basePriceINR || selectedCategory.basePriceUSD}.00) →
                   </Text>
                   <Text style={styles.bookButtonSub}>
                     {selectedDate.dayName} at {selectedTimeSlot} • Free Cancellation
@@ -961,7 +961,7 @@ export default function App() {
                       {activeAppointment ? activeAppointment.status.replace('_', ' ') : 'CARE DESK REVIEW'}
                     </Text>
                   </View>
-                  <Text style={styles.statusHeroFee}>${activeAppointment?.totalAmount || selectedCategory.basePriceUSD}</Text>
+                  <Text style={styles.statusHeroFee}>₹{activeAppointment?.totalAmount || activeAppointment?.totalFee || selectedCategory.basePriceINR || selectedCategory.basePriceUSD}</Text>
                 </View>
 
                 <Text style={styles.statusHeroTitle}>
@@ -1321,89 +1321,167 @@ export default function App() {
             </View>
           </View>
 
-          <Text style={[styles.sectionTitle, { marginTop: 18, marginBottom: 8 }]}>
-            Assigned In-Home Session Today
-          </Text>
-
-          <View style={styles.ptVisitCard}>
-            <View style={styles.ptVisitHeader}>
-              <View>
-                <Text style={styles.ptPatientName}>{patientProfile.fullName}</Text>
-                <Text style={styles.ptPatientPhone}>📞 {patientProfile.phone}</Text>
-              </View>
-              <View style={styles.ptTimeTag}>
-                <Text style={styles.ptTimeTagText}>10:00 AM - 10:45 AM</Text>
-              </View>
+          {/* THERAPIST TOP VIEW SELECTOR: ACTIVE VISIT vs COMPLETED SESSIONS */}
+          <View style={styles.ptTabRow}>
+            <View style={[styles.ptTabBadge, ptStatus === 'COMPLETED' ? styles.ptTabBadgeInactive : styles.ptTabBadgeActive]}>
+              <Text style={[styles.ptTabBadgeText, ptStatus === 'COMPLETED' && { color: '#64748b' }]}>
+                {ptStatus === 'COMPLETED' ? 'Active Dispatches (0)' : '⚡ Active Visit In-Progress'}
+              </Text>
             </View>
-
-            <View style={styles.ptAddressBox}>
-              <Text style={styles.ptAddressText}>📍 {patientProfile.primaryAddress}</Text>
-              <Text style={styles.ptNotesText}>Door Code: {patientProfile.entryNotes}</Text>
-              <Text style={styles.ptComplaintText}>Clinical Focus: Lower Back & Sciatic spasm (VAS 6/10)</Text>
-              <Text style={styles.ptConditionsText}>Pre-existing: {patientProfile.conditions.join(', ')}</Text>
+            <View style={[styles.ptTabBadge, ptStatus === 'COMPLETED' ? styles.ptTabBadgeActive : styles.ptTabBadgeInactive]}>
+              <Text style={[styles.ptTabBadgeText, ptStatus !== 'COMPLETED' && { color: '#64748b' }]}>
+                {ptStatus === 'COMPLETED' ? '📁 Completed Sessions (1 - Locked)' : '📁 Completed Sessions (0)'}
+              </Text>
             </View>
-
-            {/* LIFECYCLE ACTION BUTTONS */}
-            <Text style={styles.ptActionHeader}>Update Visit Status:</Text>
-            
-            <View style={styles.ptButtonGroup}>
-              <TouchableOpacity 
-                style={[styles.ptStatusButton, ptStatus === 'EN_ROUTE' && styles.ptStatusButtonEnRoute]}
-                onPress={() => handleUpdatePtStatus('EN_ROUTE')}
-              >
-                <Text style={styles.ptStatusButtonText}>🚗 1. Start Travel (On The Way)</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity 
-                style={[styles.ptStatusButton, ptStatus === 'ARRIVED' && styles.ptStatusButtonArrived]}
-                onPress={() => handleUpdatePtStatus('ARRIVED')}
-              >
-                <Text style={styles.ptStatusButtonText}>🏡 2. Arrived at Door</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity 
-                style={[styles.ptStatusButton, ptStatus === 'IN_SESSION' && styles.ptStatusButtonInSession]}
-                onPress={() => handleUpdatePtStatus('IN_SESSION')}
-              >
-                <Text style={styles.ptStatusButtonText}>🩺 3. Start Treatment</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity 
-                style={[styles.ptStatusButton, styles.ptStatusButtonComplete]}
-                onPress={() => setShowCompleteConfirm(true)}
-              >
-                <Text style={styles.ptStatusButtonText}>✅ 4. Complete Session & Log SOAP</Text>
-              </TouchableOpacity>
-            </View>
-
-            {/* QUICK TREATMENT TAGS */}
-            <Text style={[styles.inputMiniLabel, { marginTop: 14 }]}>SOAP Treatment Quick Templates:</Text>
-            <View style={styles.soapChipsRow}>
-              {[
-                'Lumbar Gr II Mobilization', 
-                'IFT 15 min @ 80-100Hz', 
-                'Pelvic Tilts & Core Drills', 
-                'Hamstring 3x30s Stretch'
-              ].map((tag) => (
-                <TouchableOpacity 
-                  key={tag}
-                  style={styles.soapChip}
-                  onPress={() => setClinicalNotes((prev) => (prev ? `${prev}, ${tag}` : tag))}
-                >
-                  <Text style={styles.soapChipText}>+ {tag}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-
-            <TextInput 
-              style={[styles.notesInput, { marginTop: 8 }]}
-              value={clinicalNotes}
-              onChangeText={setClinicalNotes}
-              placeholder="Clinical treatment notes (SOAP Lite)..."
-              placeholderTextColor="#94a3b8"
-              multiline
-            />
           </View>
+
+          {ptStatus === 'COMPLETED' ? (
+            /* COMPLETED SESSIONS (READ-ONLY & NON-EDITABLE) */
+            <View style={styles.completedCard}>
+              <View style={styles.completedHeaderRow}>
+                <View style={styles.completedTagBox}>
+                  <Text style={styles.completedTagText}>✓ SESSION COMPLETED</Text>
+                </View>
+                <View style={styles.readOnlyTag}>
+                  <Text style={styles.readOnlyTagText}>🔒 READ-ONLY</Text>
+                </View>
+              </View>
+
+              <Text style={styles.completedSessionHeadline}>
+                Discharge Verified & Session Closed
+              </Text>
+              <Text style={styles.completedSessionSub}>
+                This clinical visit has been successfully finalized. Payment was collected and OTP 8844 was verified. Status and treatment notes are locked and non-editable.
+              </Text>
+
+              {/* READ ONLY METRICS GRID */}
+              <View style={styles.completedMetricsGrid}>
+                <View style={styles.completedMetricItem}>
+                  <Text style={styles.completedMetricLabel}>Patient</Text>
+                  <Text style={styles.completedMetricVal}>{patientProfile.fullName}</Text>
+                  <Text style={styles.completedMetricSub}>{patientProfile.phone}</Text>
+                </View>
+                <View style={styles.completedMetricItem}>
+                  <Text style={styles.completedMetricLabel}>Discharge OTP</Text>
+                  <Text style={[styles.completedMetricVal, { color: '#059669' }]}>8844 (Verified ✓)</Text>
+                  <Text style={styles.completedMetricSub}>Confirmed by Patient</Text>
+                </View>
+                <View style={styles.completedMetricItem}>
+                  <Text style={styles.completedMetricLabel}>Fee Collected</Text>
+                  <Text style={[styles.completedMetricVal, { color: '#0d9488' }]}>
+                    ₹{activeAppointment?.totalAmount || activeAppointment?.totalFee || 850}.00
+                  </Text>
+                  <Text style={styles.completedMetricSub}>Status: SETTLED</Text>
+                </View>
+                <View style={styles.completedMetricItem}>
+                  <Text style={styles.completedMetricLabel}>Post-Care VAS</Text>
+                  <Text style={[styles.completedMetricVal, { color: '#0284c7' }]}>
+                    {postPainRating} / 10
+                  </Text>
+                  <Text style={styles.completedMetricSub}>Pain Relieved</Text>
+                </View>
+              </View>
+
+              {/* LOCKED CLINICAL NOTES */}
+              <View style={styles.lockedSoapBox}>
+                <View style={styles.lockedSoapHeader}>
+                  <Text style={styles.lockedSoapTitle}>📋 Final Clinical Record & SOAP Report</Text>
+                  <Text style={styles.lockedSoapBadge}>Locked</Text>
+                </View>
+                <Text style={styles.lockedSoapContent}>
+                  {clinicalNotes || 'Lumbar mobilization (Grade II) performed with IFT 15 min at 80-100Hz. Core stabilization exercises and hamstring stretches instructed. Post-treatment pain significantly reduced. Patient discharged safely in home environment.'}
+                </Text>
+              </View>
+
+              <View style={styles.readyForNextNotice}>
+                <Text style={styles.readyForNextIcon}>⏳</Text>
+                <Text style={styles.readyForNextText}>
+                  Standing by for next in-home dispatch assignment from Care Desk...
+                </Text>
+              </View>
+            </View>
+          ) : (
+            /* ACTIVE VISIT (EDITABLE STATUS) */
+            <View style={styles.ptVisitCard}>
+              <View style={styles.ptVisitHeader}>
+                <View>
+                  <Text style={styles.ptPatientName}>{patientProfile.fullName}</Text>
+                  <Text style={styles.ptPatientPhone}>📞 {patientProfile.phone}</Text>
+                </View>
+                <View style={styles.ptTimeTag}>
+                  <Text style={styles.ptTimeTagText}>10:00 AM - 10:45 AM</Text>
+                </View>
+              </View>
+
+              <View style={styles.ptAddressBox}>
+                <Text style={styles.ptAddressText}>📍 {patientProfile.primaryAddress}</Text>
+                <Text style={styles.ptNotesText}>Door Code: {patientProfile.entryNotes}</Text>
+                <Text style={styles.ptComplaintText}>Clinical Focus: Lower Back & Sciatic spasm (VAS 6/10)</Text>
+                <Text style={styles.ptConditionsText}>Pre-existing: {patientProfile.conditions.join(', ')}</Text>
+              </View>
+
+              {/* LIFECYCLE ACTION BUTTONS */}
+              <Text style={styles.ptActionHeader}>Update Visit Status:</Text>
+              
+              <View style={styles.ptButtonGroup}>
+                <TouchableOpacity 
+                  style={[styles.ptStatusButton, ptStatus === 'EN_ROUTE' && styles.ptStatusButtonEnRoute]}
+                  onPress={() => handleUpdatePtStatus('EN_ROUTE')}
+                >
+                  <Text style={styles.ptStatusButtonText}>🚗 1. Start Travel (On The Way)</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity 
+                  style={[styles.ptStatusButton, ptStatus === 'ARRIVED' && styles.ptStatusButtonArrived]}
+                  onPress={() => handleUpdatePtStatus('ARRIVED')}
+                >
+                  <Text style={styles.ptStatusButtonText}>🏡 2. Arrived at Door</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity 
+                  style={[styles.ptStatusButton, ptStatus === 'IN_SESSION' && styles.ptStatusButtonInSession]}
+                  onPress={() => handleUpdatePtStatus('IN_SESSION')}
+                >
+                  <Text style={styles.ptStatusButtonText}>🩺 3. Start Treatment</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity 
+                  style={[styles.ptStatusButton, styles.ptStatusButtonComplete]}
+                  onPress={() => setShowCompleteConfirm(true)}
+                >
+                  <Text style={styles.ptStatusButtonText}>✅ 4. Complete Session & Log SOAP</Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* QUICK TREATMENT TAGS */}
+              <Text style={[styles.inputMiniLabel, { marginTop: 14 }]}>SOAP Treatment Quick Templates:</Text>
+              <View style={styles.soapChipsRow}>
+                {[
+                  'Lumbar Gr II Mobilization', 
+                  'IFT 15 min @ 80-100Hz', 
+                  'Pelvic Tilts & Core Drills', 
+                  'Hamstring 3x30s Stretch'
+                ].map((tag) => (
+                  <TouchableOpacity 
+                    key={tag}
+                    style={styles.soapChip}
+                    onPress={() => setClinicalNotes((prev) => (prev ? `${prev}, ${tag}` : tag))}
+                  >
+                    <Text style={styles.soapChipText}>+ {tag}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <TextInput 
+                style={[styles.notesInput, { marginTop: 8 }]}
+                value={clinicalNotes}
+                onChangeText={setClinicalNotes}
+                placeholder="Clinical treatment notes (SOAP Lite)..."
+                placeholderTextColor="#94a3b8"
+                multiline
+              />
+            </View>
+          )}
         </ScrollView>
       )}
 
@@ -1527,17 +1605,17 @@ export default function App() {
                     <Text style={styles.billLabel}>Treatment Summary & Balance</Text>
                     <View style={styles.billRow}>
                       <Text style={styles.billItem}>Orthopedic Home Visit Fee</Text>
-                      <Text style={styles.billItemVal}>$85.00</Text>
+                      <Text style={styles.billItemVal}>₹750.00</Text>
                     </View>
                     <View style={styles.billRow}>
                       <Text style={styles.billItem}>Clinical Platform & Kit Fee</Text>
-                      <Text style={styles.billItemVal}>$10.00</Text>
+                      <Text style={styles.billItemVal}>₹100.00</Text>
                     </View>
                     <View style={styles.billDivider} />
                     <View style={styles.billRow}>
                       <Text style={styles.billTotal}>Total Outstanding Due</Text>
                       <Text style={styles.billTotalVal}>
-                        ${activeAppointment?.totalAmount || activeAppointment?.totalFee || 95}
+                        ₹{activeAppointment?.totalAmount || activeAppointment?.totalFee || 850}.00
                       </Text>
                     </View>
                     <View style={[
@@ -1564,7 +1642,7 @@ export default function App() {
                         <Text style={styles.payOptionIcon}>💵</Text>
                         <View style={{ flex: 1, marginLeft: 10 }}>
                           <Text style={styles.payOptionTitle}>Collect Cash & Mark Settled</Text>
-                          <Text style={styles.payOptionSub}>Received ${activeAppointment?.totalAmount || 95} in physical cash</Text>
+                          <Text style={styles.payOptionSub}>Received ₹{activeAppointment?.totalAmount || activeAppointment?.totalFee || 850} in physical cash</Text>
                         </View>
                         <Text style={styles.payOptionArrow}>➔</Text>
                       </TouchableOpacity>
@@ -3542,6 +3620,172 @@ const styles = StyleSheet.create({
     minHeight: 70,
     textAlignVertical: 'top',
     marginTop: 8,
+  },
+
+  // THERAPIST COCKPIT TABS & COMPLETED SESSIONS CARD
+  ptTabRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginVertical: 12,
+  },
+  ptTabBadge: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  ptTabBadgeActive: {
+    backgroundColor: '#f0fdfa',
+    borderColor: '#0d9488',
+  },
+  ptTabBadgeInactive: {
+    backgroundColor: '#f1f5f9',
+    borderColor: '#e2e8f0',
+  },
+  ptTabBadgeText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#0f766e',
+  },
+  completedCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 16,
+    padding: 18,
+    borderWidth: 1.5,
+    borderColor: '#10b981',
+    shadowColor: '#059669',
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    elevation: 3,
+    marginTop: 8,
+  },
+  completedHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  completedTagBox: {
+    backgroundColor: '#ecfdf5',
+    borderColor: '#10b981',
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  completedTagText: {
+    fontSize: 11,
+    fontWeight: '900',
+    color: '#047857',
+    letterSpacing: 0.5,
+  },
+  readOnlyTag: {
+    backgroundColor: '#f1f5f9',
+    borderColor: '#cbd5e1',
+    borderWidth: 1,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  readOnlyTagText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#475569',
+  },
+  completedSessionHeadline: {
+    fontSize: 17,
+    fontWeight: '800',
+    color: '#0f172a',
+    marginBottom: 4,
+  },
+  completedSessionSub: {
+    fontSize: 12,
+    color: '#64748b',
+    lineHeight: 18,
+    marginBottom: 16,
+  },
+  completedMetricsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+    marginBottom: 16,
+  },
+  completedMetricItem: {
+    width: '48%',
+    backgroundColor: '#f8fafc',
+    borderRadius: 10,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  completedMetricLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#64748b',
+    textTransform: 'uppercase',
+  },
+  completedMetricVal: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#0f172a',
+    marginTop: 2,
+  },
+  completedMetricSub: {
+    fontSize: 10,
+    color: '#94a3b8',
+    marginTop: 1,
+  },
+  lockedSoapBox: {
+    backgroundColor: '#f0fdfa',
+    borderRadius: 12,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#99f6e4',
+    marginBottom: 14,
+  },
+  lockedSoapHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 6,
+  },
+  lockedSoapTitle: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#0f766e',
+  },
+  lockedSoapBadge: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#0d9488',
+    backgroundColor: '#ccfbf1',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  lockedSoapContent: {
+    fontSize: 12,
+    color: '#134e4a',
+    lineHeight: 18,
+    fontStyle: 'italic',
+  },
+  readyForNextNotice: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f8fafc',
+    borderRadius: 10,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  readyForNextIcon: {
+    fontSize: 16,
+    marginRight: 8,
+  },
+  readyForNextText: {
+    fontSize: 11,
+    color: '#64748b',
+    flex: 1,
   },
 });
 

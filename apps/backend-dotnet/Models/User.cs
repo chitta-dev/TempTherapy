@@ -35,5 +35,8 @@ public class User
     [MaxLength(10)]
     public string? BloodGroup { get; set; } = "O+";
 
+    [MaxLength(255)]
+    public string PasswordHash { get; set; } = "password@1234";
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }

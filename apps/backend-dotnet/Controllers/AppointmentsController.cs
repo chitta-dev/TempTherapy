@@ -295,7 +295,7 @@ public class AppointmentsController : ControllerBase
             { 
                 success = false, 
                 requiresPayment = true,
-                message = $"Payment of ${appointment.TotalFee:F2} is pending. Please collect and settle payment before completing session." 
+                message = $"Payment of ₹{appointment.TotalFee:F2} is pending. Please collect and settle payment before completing session." 
             });
         }
 

@@ -55,6 +55,7 @@ CREATE TABLE IF NOT EXISTS users (
     medical_conditions TEXT,
     allergies TEXT,
     blood_group VARCHAR(10) DEFAULT 'O+',
+    password_hash VARCHAR(255) DEFAULT 'password@1234',
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -226,35 +227,19 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- 12. SEED INITIAL CLINICAL DATA
+-- 13. SEED INITIAL CLINICAL DATA (INR PRICING & ADMIN ROOT)
 INSERT INTO categories (id, name, description, base_price, estimated_duration_minutes, icon_name)
 VALUES
-    ('cat_ortho', 'Orthopedic & Musculoskeletal', 'Targeted care for joints, spine, ligaments, and acute muscle injuries.', 85.00, 60, 'Bone'),
-    ('cat_neuro', 'Neurological Rehabilitation', 'Specialized rehabilitation for stroke, Parkinson''s, MS, and spinal cord injuries.', 105.00, 75, 'Brain'),
-    ('cat_geriatric', 'Geriatric & Mobility Care', 'Fall prevention, safe transfers, arthritis support, and functional independence.', 80.00, 60, 'Activity'),
-    ('cat_sports', 'Sports Injury & Return-to-Play', 'ACL, rotator cuff, sprains, kinetic chain balance, and performance return.', 95.00, 60, 'Zap'),
-    ('cat_post_op', 'Post-Surgical Rehabilitation', 'Care protocols for knee/hip replacements, spinal fusions, and tendon repairs.', 100.00, 60, 'Scissors'),
-    ('cat_pediatric', 'Pediatric Physical Therapy', 'Milestone achievement, torticollis, cerebral palsy, and juvenile gait training.', 110.00, 60, 'Baby'),
-    ('cat_cardiopulmonary', 'Cardiopulmonary Conditioning', 'Breathing re-education, endurance rebuild, and post-cardiac recovery.', 90.00, 60, 'HeartPulse')
+    ('cat_ortho', 'Orthopedic & Musculoskeletal', 'Targeted care for joints, spine, ligaments, and acute muscle injuries.', 850.00, 60, 'Bone'),
+    ('cat_neuro', 'Neurological Rehabilitation', 'Specialized rehabilitation for stroke, Parkinson''s, MS, and spinal cord injuries.', 1100.00, 75, 'Brain'),
+    ('cat_geriatric', 'Geriatric & Mobility Care', 'Fall prevention, safe transfers, arthritis support, and functional independence.', 750.00, 60, 'Activity'),
+    ('cat_sports', 'Sports Injury & Return-to-Play', 'ACL, rotator cuff, sprains, kinetic chain balance, and performance return.', 950.00, 60, 'Zap'),
+    ('cat_post_op', 'Post-Surgical Rehabilitation', 'Care protocols for knee/hip replacements, spinal fusions, and tendon repairs.', 1000.00, 60, 'Scissors'),
+    ('cat_pediatric', 'Pediatric Physical Therapy', 'Milestone achievement, torticollis, cerebral palsy, and juvenile gait training.', 1050.00, 60, 'Baby'),
+    ('cat_cardiopulmonary', 'Cardiopulmonary Conditioning', 'Breathing re-education, endurance rebuild, and post-cardiac recovery.', 900.00, 60, 'HeartPulse')
 ON CONFLICT (id) DO NOTHING;
 
-INSERT INTO users (id, role, full_name, email, phone_number, emergency_contact_name, emergency_contact_phone, medical_conditions, allergies, blood_group)
+INSERT INTO users (id, role, full_name, email, password_hash, phone_number)
 VALUES
-    ('usr_patient_1', 'Patient', 'Michael Chen', 'michael.chen@example.com', '+1 (555) 234-5678', 'Emily Chen (Spouse)', '+1 (555) 987-6543', 'Hypertension (Controlled)', 'Penicillin, NSAIDs', 'O+'),
-    ('usr_pt_jenkins', 'Therapist', 'Dr. Sarah Jenkins, PT, DPT', 's.jenkins@therapycare.health', '+1 (555) 345-6789', 'Clinic Operations', '+1 (555) 800-0199', NULL, NULL, 'A+'),
-    ('usr_pt_vance', 'Therapist', 'Dr. Marcus Vance, PT, MS', 'm.vance@therapycare.health', '+1 (555) 456-7890', 'Clinic Operations', '+1 (555) 800-0199', NULL, NULL, 'B+'),
-    ('usr_pt_rostova', 'Therapist', 'Dr. Elena Rostova, DPT, OCS', 'e.rostova@therapycare.health', '+1 (555) 567-8901', 'Clinic Operations', '+1 (555) 800-0199', NULL, NULL, 'O-')
-ON CONFLICT (id) DO NOTHING;
-
-INSERT INTO therapist_profiles (id, user_id, license_number, specializations, experience_years, rating, review_count, is_available, current_latitude, current_longitude, service_radius_km)
-VALUES
-    ('pt_1', 'usr_pt_jenkins', 'NY-PT-048291', '["Orthopedic & Musculoskeletal", "Sports Injury & Return-to-Play", "Post-Surgical Rehabilitation"]'::jsonb, 8, 4.90, 128, true, 40.7135, -74.0040, 15.0),
-    ('pt_2', 'usr_pt_vance', 'NY-PT-051184', '["Neurological Rehabilitation", "Geriatric & Mobility Care", "Cardiopulmonary Conditioning"]'::jsonb, 11, 4.80, 94, true, 40.7250, -73.9960, 20.0),
-    ('pt_3', 'usr_pt_rostova', 'NY-PT-039920', '["Post-Surgical Rehabilitation", "Pediatric Physical Therapy", "Orthopedic & Musculoskeletal"]'::jsonb, 6, 5.00, 67, true, 40.7380, -73.9850, 12.0)
-ON CONFLICT (id) DO NOTHING;
-
-INSERT INTO service_requests (id, patient_id, category_id, target_area, pain_severity, chief_complaint, preferred_date, preferred_time_slot, address_line, latitude, longitude, status, urgency)
-VALUES
-    ('req_101', 'usr_patient_1', 'cat_ortho', 'Lower Back', 7, 'Acute lumbar spasm after lifting heavy box. Radiating ache into left glute. Difficulty sitting longer than 15 mins.', 'Today', '10:00 AM', '742 Evergreen Terrace, Apt 4B, New York, NY 10001', 40.7128, -74.0060, 'PENDING_TRIAGE', 'SAME_DAY'),
-    ('req_102', 'usr_patient_1', 'cat_post_op', 'Right Knee', 5, 'Day 14 post-operative right total knee arthroplasty (TKA). Needs gentle passive ROM, patellar mobilization, and gait refinement.', 'Tomorrow', '02:30 PM', '350 5th Avenue, Suite 1200, New York, NY 10118', 40.7484, -73.9857, 'PENDING_TRIAGE', 'ROUTINE')
+    ('usr_admin', 'Admin', 'System Administrator', 'admin@therapycare.health', 'password@1234', '+91 98765 43210')
 ON CONFLICT (id) DO NOTHING;

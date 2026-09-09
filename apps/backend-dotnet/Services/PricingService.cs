@@ -13,25 +13,25 @@ public record FeeBreakdown(
 
 public class PricingService
 {
-    private const decimal TaxRate = 0.08875m; // 8.875% NY Combined Sales Tax
-    private const decimal PlatformFeeAmount = 10.00m;
+    private const decimal TaxRate = 0.05m; // 5% Healthcare GST
+    private const decimal PlatformFeeAmount = 99.00m; // INR 99 Platform & Clinical Consumables
 
     public FeeBreakdown CalculateSessionFee(decimal basePrice, double distanceKm, UrgencyLevel urgency)
     {
-        // Distance Tier Calculation
+        // Distance Tier Calculation in Rupees
         decimal distanceFee = distanceKm switch
         {
             <= 5.0 => 0.00m,
-            <= 10.0 => 12.00m,
-            <= 20.0 => 24.00m,
-            _ => 38.00m
+            <= 10.0 => 100.00m,
+            <= 20.0 => 250.00m,
+            _ => 400.00m
         };
 
-        // Urgency Surcharge
+        // Urgency Surcharge in Rupees
         decimal urgentFee = urgency switch
         {
-            UrgencyLevel.SAME_DAY => 20.00m,
-            UrgencyLevel.URGENT => 35.00m,
+            UrgencyLevel.SAME_DAY => 150.00m,
+            UrgencyLevel.URGENT => 300.00m,
             _ => 0.00m
         };
 
