@@ -7,9 +7,23 @@ using TherapyCare.Api.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// 1. Configure EF Core with SQLite
-builder.Services.AddDbContext<TherapyDbContext>(options =>
-    options.UseSqlite(builder.Configuration.GetConnectionString("DefaultConnection") ?? "Data Source=therapy.db"));
+// 1. Configure EF Core (Supabase PostgreSQL or Local SQLite)
+var connString = builder.Configuration.GetConnectionString("SupabaseConnection")
+    ?? builder.Configuration.GetConnectionString("DefaultConnection") 
+    ?? "Data Source=therapy.db";
+
+if (connString.Contains("Host=", StringComparison.OrdinalIgnoreCase) || 
+    connString.Contains("User Id=", StringComparison.OrdinalIgnoreCase) ||
+    connString.Contains("Username=", StringComparison.OrdinalIgnoreCase))
+{
+    builder.Services.AddDbContext<TherapyDbContext>(options =>
+        options.UseNpgsql(connString));
+}
+else
+{
+    builder.Services.AddDbContext<TherapyDbContext>(options =>
+        options.UseSqlite(connString));
+}
 
 // 2. Register Business Services
 builder.Services.AddSingleton<PricingService>();
