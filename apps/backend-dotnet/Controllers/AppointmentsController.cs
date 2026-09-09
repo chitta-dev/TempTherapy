@@ -135,9 +135,12 @@ public class AppointmentsController : ControllerBase
 
         if (conflictingAppointment != null)
         {
+            var therapistDisplayName = therapist.User?.FullName?.StartsWith("Dr.") == true 
+                ? therapist.User.FullName 
+                : $"Dr. {therapist.User?.FullName ?? "Selected"}";
             return BadRequest(new
             {
-                message = $"Therapist Dr. {therapist.User?.FullName ?? "Selected"} is already booked for an appointment from {conflictingAppointment.ScheduledStart:hh:mm tt} to {conflictingAppointment.ScheduledEnd:hh:mm tt}. Please pick an available time slot or therapist."
+                message = $"Therapist {therapistDisplayName} is already booked for an appointment from {conflictingAppointment.ScheduledStart:hh:mm tt} to {conflictingAppointment.ScheduledEnd:hh:mm tt}. Please pick an available time slot or therapist."
             });
         }
 
