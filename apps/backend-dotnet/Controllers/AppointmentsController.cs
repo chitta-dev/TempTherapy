@@ -580,6 +580,63 @@ public class AppointmentsController : ControllerBase
         });
     }
 
+    [HttpPost("clean-sessions")]
+    [HttpDelete("clean-sessions")]
+    public async Task<IActionResult> CleanSessionData([FromQuery] bool resetPendingTriage = true, [FromQuery] bool purgeAllRequests = false)
+    {
+        // 1. Delete all appointments / sessions
+        var appointments = await _context.Appointments.ToListAsync();
+        _context.Appointments.RemoveRange(appointments);
+
+        // 2. Handle service requests
+        var requests = await _context.ServiceRequests.ToListAsync();
+        if (purgeAllRequests)
+        {
+            _context.ServiceRequests.RemoveRange(requests);
+        }
+        else
+        {
+            foreach (var req in requests)
+            {
+                if (req.Id == "req_760123" || req.Id == "req_868096")
+                {
+                    _context.ServiceRequests.Remove(req);
+                }
+                else if (resetPendingTriage)
+                {
+                    req.Status = RequestStatus.PENDING_TRIAGE;
+                    req.TotalSessions = 1;
+                    req.PackageName = null;
+                    req.OfflineConsultationNotes = null;
+                }
+            }
+        }
+
+        // 3. Clean up test users created during automated testing
+        var testUsers = await _context.Users
+            .Where(u => u.Email == "kavita.rao@test.com" || u.Email == "suresh.patel@test.com")
+            .ToListAsync();
+        if (testUsers.Any())
+        {
+            _context.Users.RemoveRange(testUsers);
+        }
+
+        await _context.SaveChangesAsync();
+        _logger.LogInformation("Cleaned {Count} session appointments and reset triage status", appointments.Count);
+
+        // Broadcast real-time refresh to dispatch desk
+        await _hubContext.Clients.Group("dispatch_desk").SendAsync("ReceiveAppointmentsRefreshed");
+        await _hubContext.Clients.Group("dispatch_desk").SendAsync("ReceiveVisitStatusUpdated", new { status = "REFRESH" });
+
+        return Ok(new
+        {
+            success = true,
+            message = "All appointment sessions successfully cleaned. System ready for manual testing.",
+            deletedAppointments = appointments.Count,
+            resetRequests = requests.Count(r => r.Id != "req_760123" && r.Id != "req_868096")
+        });
+    }
+
     private static double CalculateDistanceKm(double lat1, double lon1, double lat2, double lon2)
     {
         const double R = 6371.0; // Earth radius in km

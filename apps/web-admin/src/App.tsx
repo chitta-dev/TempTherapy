@@ -725,6 +725,28 @@ export default function App() {
     }
   };
 
+  // Handle Cleaning Session Data for Manual Testing
+  const handleCleanSessionData = async () => {
+    if (!window.confirm('Clean all appointment session data?\n\nThis will purge all created appointments and reset triage requests back to pending status for manual testing.')) {
+      return;
+    }
+    try {
+      const res = await fetch(`${API_BASE}/appointments/clean-sessions`, {
+        method: 'POST'
+      });
+      const data = await res.json();
+      if (res.ok) {
+        showToast(data.message || 'All session data purged successfully!', 'success');
+        await fetchData();
+        setActiveTab('queue');
+      } else {
+        showToast(data.message || 'Failed to clean session data', 'error');
+      }
+    } catch {
+      showToast('Error connecting to backend to clean sessions.', 'error');
+    }
+  };
+
   // Handle Creating New User (Admin Only)
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1809,6 +1831,15 @@ export default function App() {
 
         {/* ROLE INDICATOR & ACTIONS */}
         <div className="flex items-center space-x-3">
+          <button 
+            onClick={handleCleanSessionData}
+            title="Clean all session appointments and reset triage queue for manual testing"
+            className="flex items-center space-x-1.5 bg-rose-50 hover:bg-rose-100 active:bg-rose-200 text-rose-700 border border-rose-200/80 px-3.5 py-2.5 rounded-xl font-bold text-xs transition shadow-xs"
+          >
+            <RotateCcw className="w-3.5 h-3.5 text-rose-600" />
+            <span>Clean Sessions</span>
+          </button>
+
           <button 
             onClick={() => setActiveTab('new-request')}
             className="flex items-center space-x-2 bg-teal-600 hover:bg-teal-700 active:bg-teal-800 text-white px-4 py-2.5 rounded-xl font-bold text-xs transition shadow-xs"
