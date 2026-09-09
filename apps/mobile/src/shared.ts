@@ -39,14 +39,20 @@ export type TherapistSeniority = 'JUNIOR' | 'SENIOR' | 'MASTER_CONSULTANT';
 
 export interface User {
   id: string;
-  email: string;
+  email?: string;
   fullName: string;
-  phone: string;
-  role: UserRole;
+  phone?: string;
+  phoneNumber?: string;
+  role: UserRole | string;
+  medicalConditions?: string;
+  allergies?: string;
+  bloodGroup?: string;
+  emergencyContactName?: string;
+  emergencyContactPhone?: string;
   avatarUrl?: string;
   ssoProvider?: 'GOOGLE' | 'APPLE' | null;
-  isActive: boolean;
-  createdAt: string;
+  isActive?: boolean;
+  createdAt?: string;
 }
 
 export interface TherapyCategory {
@@ -66,13 +72,13 @@ export interface Coordinates {
 }
 
 export interface Address {
-  id: string;
-  userId: string;
+  id?: string;
+  userId?: string;
   addressLine: string;
   landmark?: string;
-  city: string;
-  pinCode: string;
-  coordinates: Coordinates;
+  city?: string;
+  pinCode?: string;
+  coordinates?: Coordinates;
   entryInstructions?: string;
 }
 
@@ -82,59 +88,73 @@ export interface TherapistProfile {
   user: User;
   licenseNumber: string;
   specializations: string[];
-  seniority: TherapistSeniority;
-  yearsOfExperience: number;
+  seniority?: TherapistSeniority;
+  yearsOfExperience?: number;
+  experienceYears?: number;
   serviceRadiusKm: number;
-  baseCoordinates: Coordinates;
-  isVerified: boolean;
+  baseCoordinates?: Coordinates;
+  isVerified?: boolean;
   rating: number;
-  totalReviews: number;
-  completedVisitsCount: number;
+  totalReviews?: number;
+  reviewCount?: number;
+  completedVisitsCount?: number;
 }
 
 export interface ServiceRequest {
   id: string;
   patientId: string;
-  patient: User;
-  categoryId: string;
-  category: TherapyCategory;
-  serviceMode: ServiceMode;
-  createdByUserRole: 'PATIENT' | 'DESK_BOY';
-  createdByUserId: string;
-  address: Address;
-  painAreas: string[];
-  conditionDescription: string;
-  preferredTimeWindow: string;
+  patient?: User;
+  categoryId?: string;
+  category?: TherapyCategory;
+  serviceMode?: ServiceMode;
+  createdByUserRole?: 'PATIENT' | 'DESK_BOY';
+  createdByUserId?: string;
+  address?: Address;
+  addressLine?: string;
+  chiefComplaint?: string;
+  targetArea?: string;
+  painSeverity?: number;
+  entryNotes?: string;
+  preferredDate?: string;
+  preferredTimeSlot?: string;
+  painAreas?: string[];
+  conditionDescription?: string;
+  preferredTimeWindow?: string;
   prescriptionImageUrl?: string;
-  status: RequestStatus;
-  urgency: 'NORMAL' | 'URGENT';
-  createdAt: string;
+  status?: RequestStatus | string;
+  urgency?: 'NORMAL' | 'URGENT' | string;
+  createdAt?: string;
 }
 
 export interface Appointment {
   id: string;
   requestId: string;
-  request: ServiceRequest;
+  request?: ServiceRequest;
   patientId: string;
-  patient: User;
+  patient?: User;
   therapistId: string;
-  therapist: TherapistProfile;
-  assignedByUserId: string;
-  serviceMode: ServiceMode;
-  scheduledStart: string;
-  scheduledEnd: string;
-  status: AppointmentStatus;
+  therapist?: TherapistProfile;
+  assignedByUserId?: string;
+  serviceMode?: ServiceMode;
+  scheduledStart?: string;
+  scheduledEnd?: string;
+  status: AppointmentStatus | string;
   
   // Financial breakdown
-  baseAmount: number;
-  travelDistanceKm: number;
-  travelAmount: number;
-  senioritySurcharge: number;
-  discountAmount: number;
-  totalAmount: number;
+  baseAmount?: number;
+  baseFee?: number;
+  travelDistanceKm?: number;
+  travelAmount?: number;
+  distanceTierFee?: number;
+  urgentFee?: number;
+  platformFee?: number;
+  tax?: number;
+  senioritySurcharge?: number;
+  discountAmount?: number;
+  totalAmount?: number;
   totalFee?: number;
-  paymentMode: PaymentMode;
-  paymentStatus: PaymentStatus;
+  paymentMode?: PaymentMode | string;
+  paymentStatus?: PaymentStatus | string;
   
   // Execution details
   therapistDepartedAt?: string;
@@ -148,7 +168,7 @@ export interface Appointment {
   prescribedExercises?: string[];
   patientRating?: number;
   patientFeedback?: string;
-  createdAt: string;
+  createdAt?: string;
 }
 
 // 7 Standard Therapy Categories

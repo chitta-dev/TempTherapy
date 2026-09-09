@@ -27,13 +27,20 @@ public class RequestsController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<IActionResult> GetRequests()
+    public async Task<IActionResult> GetRequests([FromQuery] string? patientId)
     {
-        var requests = await _context.ServiceRequests
+        var query = _context.ServiceRequests
             .Include(r => r.Patient)
             .Include(r => r.Category)
+            .AsNoTracking();
+
+        if (!string.IsNullOrWhiteSpace(patientId))
+        {
+            query = query.Where(r => r.PatientId == patientId);
+        }
+
+        var requests = await query
             .OrderByDescending(r => r.CreatedAt)
-            .AsNoTracking()
             .ToListAsync();
 
         return Ok(requests);

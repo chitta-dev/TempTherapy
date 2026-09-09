@@ -31,7 +31,10 @@ public class AppointmentsController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<IActionResult> GetAppointments([FromQuery] string? patientId, [FromQuery] string? status)
+    public async Task<IActionResult> GetAppointments(
+        [FromQuery] string? patientId, 
+        [FromQuery] string? therapistId, 
+        [FromQuery] string? status)
     {
         var query = _context.Appointments
             .Include(a => a.Patient)
@@ -44,6 +47,11 @@ public class AppointmentsController : ControllerBase
         if (!string.IsNullOrWhiteSpace(patientId))
         {
             query = query.Where(a => a.PatientId == patientId);
+        }
+
+        if (!string.IsNullOrWhiteSpace(therapistId))
+        {
+            query = query.Where(a => a.TherapistId == therapistId || (a.Therapist != null && a.Therapist.UserId == therapistId));
         }
 
         if (!string.IsNullOrWhiteSpace(status) && Enum.TryParse<AppointmentStatus>(status, true, out var aptStatus))

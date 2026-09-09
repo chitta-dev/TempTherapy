@@ -1003,7 +1003,7 @@ export default function App() {
                           <span className="text-slate-400 font-bold uppercase text-[10px] block">Patient Information</span>
                           <p className="font-bold text-slate-900 text-sm">{patientName}</p>
                           <p className="text-slate-500">{apt.patient?.phoneNumber || apt.patient?.phone || '+91 98765 43210'}</p>
-                          <p className="text-slate-500">{apt.request?.address?.addressLine || 'Delhi NCR'}</p>
+                          <p className="text-slate-500">{apt.request?.addressLine || apt.request?.address?.addressLine || 'Indiranagar, Bengaluru'}</p>
                         </div>
 
                         <div className="space-y-1">

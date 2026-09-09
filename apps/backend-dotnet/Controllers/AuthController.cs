@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using TherapyCare.Api.Data;
 using TherapyCare.Api.Models;
+using TherapyCare.Api.Services;
 
 namespace TherapyCare.Api.Controllers;
 
@@ -30,6 +31,8 @@ public class AuthController : ControllerBase
         string? BloodGroup
     );
     public record SsoLoginDto(string Provider, string Email, string FullName, string? PhoneNumber);
+    public record ResetPasswordDto(string Email, string Token, string NewPassword);
+    public record RequestResetDto(string Email);
 
     [HttpPost("login")]
     public async Task<IActionResult> Login([FromBody] LoginDto dto)
@@ -48,7 +51,8 @@ public class AuthController : ControllerBase
             return Unauthorized(new { success = false, message = "Invalid email or user not found." });
         }
 
-        if (user.PasswordHash != dto.Password && user.PasswordHash != "password@1234")
+        // Verify password using PBKDF2 salt-and-hash verification
+        if (!PasswordSecurity.VerifyPassword(user.PasswordHash, dto.Password))
         {
             return Unauthorized(new { success = false, message = "Invalid password." });
         }
@@ -63,8 +67,103 @@ public class AuthController : ControllerBase
                 user.Email,
                 user.PhoneNumber,
                 Role = user.Role.ToString(),
+                user.IsActivated,
                 user.CreatedAt
             }
+        });
+    }
+
+    /// <summary>
+    /// Resets password and activates the user account via the secure activation token received in email.
+    /// Encrypts and stores the new password using cryptographic salt and hash.
+    /// </summary>
+    [HttpPost("reset-password")]
+    public async Task<IActionResult> ResetPassword([FromBody] ResetPasswordDto dto)
+    {
+        if (string.IsNullOrWhiteSpace(dto.Email) || string.IsNullOrWhiteSpace(dto.Token) || string.IsNullOrWhiteSpace(dto.NewPassword))
+        {
+            return BadRequest(new { success = false, message = "Email, activation token, and new password are required." });
+        }
+
+        if (dto.NewPassword.Trim().Length < 6)
+        {
+            return BadRequest(new { success = false, message = "Password must be at least 6 characters long." });
+        }
+
+        var cleanEmail = dto.Email.Trim().ToLower();
+        var user = await _context.Users.FirstOrDefaultAsync(u => 
+            u.Email != null && u.Email.ToLower() == cleanEmail);
+
+        if (user == null)
+        {
+            return NotFound(new { success = false, message = "User account not found." });
+        }
+
+        // Verify activation token matches and is not expired
+        if (string.IsNullOrWhiteSpace(user.ActivationToken) || 
+            !string.Equals(user.ActivationToken.Trim(), dto.Token.Trim(), StringComparison.OrdinalIgnoreCase))
+        {
+            return BadRequest(new { success = false, message = "Invalid or expired activation/reset token." });
+        }
+
+        if (user.ActivationTokenExpiresAt.HasValue && user.ActivationTokenExpiresAt.Value < DateTime.UtcNow)
+        {
+            return BadRequest(new { success = false, message = "This activation link has expired. Please request a new link." });
+        }
+
+        // Encrypt new password using salt and hash
+        user.PasswordHash = PasswordSecurity.HashPassword(dto.NewPassword.Trim());
+        user.ActivationToken = null;
+        user.ActivationTokenExpiresAt = null;
+        user.IsActivated = true;
+
+        await _context.SaveChangesAsync();
+
+        Console.WriteLine($"[AUTH-RESET] Password updated and account activated for {user.Email} using salt & hash.");
+
+        return Ok(new
+        {
+            success = true,
+            message = "Your password has been successfully updated and encrypted! You can now log in with your updated password.",
+            email = user.Email
+        });
+    }
+
+    /// <summary>
+    /// Requests a password reset / activation email link.
+    /// </summary>
+    [HttpPost("request-reset")]
+    public async Task<IActionResult> RequestReset([FromBody] RequestResetDto dto)
+    {
+        if (string.IsNullOrWhiteSpace(dto.Email))
+        {
+            return BadRequest(new { success = false, message = "Email is required." });
+        }
+
+        var cleanEmail = dto.Email.Trim().ToLower();
+        var user = await _context.Users.FirstOrDefaultAsync(u => 
+            u.Email != null && u.Email.ToLower() == cleanEmail);
+
+        if (user == null)
+        {
+            return NotFound(new { success = false, message = "User account not found." });
+        }
+
+        user.ActivationToken = Guid.NewGuid().ToString("N");
+        user.ActivationTokenExpiresAt = DateTime.UtcNow.AddDays(7);
+        await _context.SaveChangesAsync();
+
+        var activationLink = $"http://localhost:3000/?action=reset-password&token={user.ActivationToken}&email={Uri.EscapeDataString(user.Email)}";
+        var emailNotification = $"[RESET PASSWORD EMAIL to {user.Email}]: Reset your password at:\n{activationLink}\n(Link is valid for 7 days).";
+        Console.WriteLine(emailNotification);
+
+        return Ok(new
+        {
+            success = true,
+            message = $"Password reset link dispatched to {user.Email}.",
+            activationLink,
+            token = user.ActivationToken,
+            emailNotification
         });
     }
 
@@ -135,7 +234,7 @@ public class AuthController : ControllerBase
                 Email = $"patient_{digitsOnly}@therapyhub.health",
                 MedicalConditions = "None",
                 BloodGroup = "O+",
-                PasswordHash = "password@1234",
+                PasswordHash = PasswordSecurity.HashPassword("password@1234"),
                 CreatedAt = DateTime.UtcNow
             };
             _context.Users.Add(matchedUser);
@@ -190,7 +289,7 @@ public class AuthController : ControllerBase
             EmergencyContactPhone = dto.EmergencyContactPhone?.Trim(),
             MedicalConditions = dto.MedicalConditions?.Trim() ?? "None",
             BloodGroup = dto.BloodGroup?.Trim() ?? "O+",
-            PasswordHash = "password@1234",
+            PasswordHash = PasswordSecurity.HashPassword("password@1234"),
             CreatedAt = DateTime.UtcNow
         };
 
@@ -238,7 +337,7 @@ public class AuthController : ControllerBase
                 FullName = !string.IsNullOrWhiteSpace(dto.FullName) ? dto.FullName.Trim() : "Patient",
                 Email = cleanEmail,
                 PhoneNumber = dto.PhoneNumber?.Trim(),
-                PasswordHash = "password@1234",
+                PasswordHash = PasswordSecurity.HashPassword("password@1234"),
                 CreatedAt = DateTime.UtcNow
             };
             _context.Users.Add(user);

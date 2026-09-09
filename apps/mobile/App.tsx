@@ -237,6 +237,13 @@ export default function App() {
       medicalConditions: null
     },
     {
+      id: 'usr_pt_vance',
+      fullName: 'Dr. Marcus Vance, PT, MS',
+      role: 'Therapist',
+      phoneNumber: '+91 98765 00002',
+      medicalConditions: null
+    },
+    {
       id: 'usr_patient_281753',
       fullName: 'Rajesh Sharma',
       role: 'Patient',
@@ -261,6 +268,7 @@ export default function App() {
 
   // Therapist Cockpit State
   const [ptStatus, setPtStatus] = useState<'ASSIGNED' | 'EN_ROUTE' | 'ARRIVED' | 'IN_SESSION' | 'COMPLETED'>('ASSIGNED');
+  const [clinicianTab, setClinicianTab] = useState<'ACTIVE' | 'COMPLETED'>('ACTIVE');
   const [clinicalNotes, setClinicalNotes] = useState('');
 
   // 2-Step Completion & Payment Flow States
@@ -341,7 +349,9 @@ export default function App() {
 
     try {
       const url = (currentRole === 'PATIENT' && currentLease?.userId)
-        ? `${API_BASE}/appointments?patientId=${currentLease.userId}`
+        ? `${API_BASE}/appointments?patientId=${encodeURIComponent(currentLease.userId)}`
+        : (currentRole === 'THERAPIST' && currentLease?.userId)
+        ? `${API_BASE}/appointments?therapistId=${encodeURIComponent(currentLease.userId)}`
         : `${API_BASE}/appointments`;
       const res = await fetch(url);
       const data = await res.json();
@@ -364,6 +374,28 @@ export default function App() {
         });
       }
 
+      // If in Therapist role, strictly filter to ONLY this clinician's records. NEVER leak other clinicians!
+      if (currentRole === 'THERAPIST') {
+        const leaseId = currentLease?.userId || '';
+        const cleanLeasePhone = currentLease?.phoneNumber ? currentLease.phoneNumber.replace(/\D/g, '') : '';
+
+        aptList = aptList.filter((a: any) => {
+          const matchId = leaseId && (
+            a.therapistId === leaseId || 
+            a.therapist?.id === leaseId || 
+            a.therapist?.userId === leaseId || 
+            a.therapist?.user?.id === leaseId
+          );
+          const aptPhone = a.therapist?.user?.phoneNumber ? a.therapist.user.phoneNumber.replace(/\D/g, '') : '';
+          const matchPhone = cleanLeasePhone && aptPhone && (
+            cleanLeasePhone === aptPhone || 
+            (cleanLeasePhone.length >= 10 && aptPhone.endsWith(cleanLeasePhone.slice(-10))) ||
+            (aptPhone.length >= 10 && cleanLeasePhone.endsWith(aptPhone.slice(-10)))
+          );
+          return matchId || matchPhone;
+        });
+      }
+
       // Filter active (in-progress) appointments vs completed
       const active = aptList.find((a: any) => a.status !== 'COMPLETED' && a.status !== 'CANCELLED');
       const completed = aptList.filter((a: any) => a.status === 'COMPLETED');
@@ -374,13 +406,22 @@ export default function App() {
       if (active) {
         setActiveAppointment(active);
         setPtStatus(active.status as any);
+        if (currentRole === 'THERAPIST') {
+          setClinicianTab('ACTIVE');
+        }
       } else {
-        // No active live appointment for this patient!
+        // No active live appointment for this user!
         setActiveAppointment(null);
         if (completed.length > 0) {
           setPtStatus('COMPLETED');
+          if (currentRole === 'THERAPIST') {
+            setClinicianTab('COMPLETED');
+          }
         } else {
           setPtStatus('ASSIGNED');
+          if (currentRole === 'THERAPIST') {
+            setClinicianTab('ACTIVE');
+          }
         }
       }
     } catch (e) {
@@ -406,6 +447,12 @@ export default function App() {
             u.phoneNumber
           );
           if (validUsers.length > 0) {
+            // Sort: Clinicians first, then named patients
+            validUsers.sort((a: any, b: any) => {
+              if (a.role?.toLowerCase() === 'therapist' && b.role?.toLowerCase() !== 'therapist') return -1;
+              if (b.role?.toLowerCase() === 'therapist' && a.role?.toLowerCase() !== 'therapist') return 1;
+              return (a.fullName || '').localeCompare(b.fullName || '');
+            });
             setAvailableUsers(validUsers);
           }
         }
@@ -2314,181 +2361,278 @@ export default function App() {
       {/* 3. THERAPIST PROFESSIONAL CLINICAL COCKPIT */}
       {roleMode === 'THERAPIST' && (
         <ScrollView style={styles.scrollArea} contentContainerStyle={{ padding: 16, paddingBottom: 60 }}>
-          <View style={styles.clinicianHeaderCard}>
-            <View style={styles.clinicianHeaderAvatar}>
-              <Text style={styles.clinicianHeaderAvatarText}>SJ</Text>
-            </View>
-            <View style={{ flex: 1, marginLeft: 12 }}>
-              <Text style={styles.ptNameTitle}>Dr. Sarah Jenkins, PT, DPT</Text>
-              <Text style={styles.ptBadgeText}>Senior Orthopedic Specialist • NY State Board</Text>
-            </View>
-          </View>
+          {/* CLINICIAN PROFILE HERO HEADER */}
+          {(() => {
+            const clinicianName = sessionLease?.userName || 'Dr. Sarah Jenkins, PT, DPT';
+            const clinicianInitials = (clinicianName.replace(/Dr\.\s*/i, '').trim().split(' ').map((n: string) => n[0]).join('') || 'PT').slice(0, 2).toUpperCase();
+            return (
+              <View style={styles.clinicianHeaderCard}>
+                <View style={styles.clinicianHeaderAvatar}>
+                  <Text style={styles.clinicianHeaderAvatarText}>{clinicianInitials}</Text>
+                </View>
+                <View style={{ flex: 1, marginLeft: 12 }}>
+                  <Text style={styles.ptNameTitle}>{clinicianName}</Text>
+                  <Text style={styles.ptBadgeText}>Senior Orthopedic Specialist • Licensed Clinician</Text>
+                </View>
+              </View>
+            );
+          })()}
 
           {/* THERAPIST TOP VIEW SELECTOR: ACTIVE VISIT vs COMPLETED SESSIONS */}
           <View style={styles.ptTabRow}>
-            <View style={[styles.ptTabBadge, ptStatus === 'COMPLETED' ? styles.ptTabBadgeInactive : styles.ptTabBadgeActive]}>
-              <Text style={[styles.ptTabBadgeText, ptStatus === 'COMPLETED' && { color: '#64748b' }]}>
-                {ptStatus === 'COMPLETED' ? 'Active Dispatches (0)' : '⚡ Active Visit In-Progress'}
+            <TouchableOpacity 
+              style={[styles.ptTabBadge, clinicianTab === 'ACTIVE' ? styles.ptTabBadgeActive : styles.ptTabBadgeInactive]}
+              onPress={() => setClinicianTab('ACTIVE')}
+            >
+              <Text style={[styles.ptTabBadgeText, clinicianTab !== 'ACTIVE' && { color: '#64748b' }]}>
+                {activeAppointment ? '⚡ Active Visit (1)' : '⚡ Active Dispatches (0)'}
               </Text>
-            </View>
-            <View style={[styles.ptTabBadge, ptStatus === 'COMPLETED' ? styles.ptTabBadgeActive : styles.ptTabBadgeInactive]}>
-              <Text style={[styles.ptTabBadgeText, ptStatus !== 'COMPLETED' && { color: '#64748b' }]}>
-                {ptStatus === 'COMPLETED' ? '📁 Completed Sessions (1 - Locked)' : '📁 Completed Sessions (0)'}
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={[styles.ptTabBadge, clinicianTab === 'COMPLETED' ? styles.ptTabBadgeActive : styles.ptTabBadgeInactive]}
+              onPress={() => setClinicianTab('COMPLETED')}
+            >
+              <Text style={[styles.ptTabBadgeText, clinicianTab !== 'COMPLETED' && { color: '#64748b' }]}>
+                {`📁 Completed Sessions (${completedAppointments.length}${completedAppointments.length > 0 ? ' - Locked' : ''})`}
               </Text>
-            </View>
+            </TouchableOpacity>
           </View>
 
-          {ptStatus === 'COMPLETED' ? (
-            /* COMPLETED SESSIONS (READ-ONLY & NON-EDITABLE) */
-            <View style={styles.completedCard}>
-              <View style={styles.completedHeaderRow}>
-                <View style={styles.completedTagBox}>
-                  <Text style={styles.completedTagText}>✓ SESSION COMPLETED</Text>
-                </View>
-                <View style={styles.readOnlyTag}>
-                  <Text style={styles.readOnlyTagText}>🔒 READ-ONLY</Text>
-                </View>
-              </View>
-
-              <Text style={styles.completedSessionHeadline}>
-                Discharge Verified & Session Closed
-              </Text>
-              <Text style={styles.completedSessionSub}>
-                This clinical visit has been successfully finalized. Payment was collected and OTP 8844 was verified. Status and treatment notes are locked and non-editable.
-              </Text>
-
-              {/* READ ONLY METRICS GRID */}
-              <View style={styles.completedMetricsGrid}>
-                <View style={styles.completedMetricItem}>
-                  <Text style={styles.completedMetricLabel}>Patient</Text>
-                  <Text style={styles.completedMetricVal}>{patientProfile.fullName}</Text>
-                  <Text style={styles.completedMetricSub}>{patientProfile.phone}</Text>
-                </View>
-                <View style={styles.completedMetricItem}>
-                  <Text style={styles.completedMetricLabel}>Discharge OTP</Text>
-                  <Text style={[styles.completedMetricVal, { color: '#059669' }]}>8844 (Verified ✓)</Text>
-                  <Text style={styles.completedMetricSub}>Confirmed by Patient</Text>
-                </View>
-                <View style={styles.completedMetricItem}>
-                  <Text style={styles.completedMetricLabel}>Fee Collected</Text>
-                  <Text style={[styles.completedMetricVal, { color: '#0d9488' }]}>
-                    ₹{activeAppointment?.totalAmount || activeAppointment?.totalFee || 850}.00
-                  </Text>
-                  <Text style={styles.completedMetricSub}>Status: SETTLED</Text>
-                </View>
-                <View style={styles.completedMetricItem}>
-                  <Text style={styles.completedMetricLabel}>Post-Care VAS</Text>
-                  <Text style={[styles.completedMetricVal, { color: '#0284c7' }]}>
-                    {postPainRating} / 10
-                  </Text>
-                  <Text style={styles.completedMetricSub}>Pain Relieved</Text>
-                </View>
-              </View>
-
-              {/* LOCKED CLINICAL NOTES */}
-              <View style={styles.lockedSoapBox}>
-                <View style={styles.lockedSoapHeader}>
-                  <Text style={styles.lockedSoapTitle}>📋 Final Clinical Record & SOAP Report</Text>
-                  <Text style={styles.lockedSoapBadge}>Locked</Text>
-                </View>
-                <Text style={styles.lockedSoapContent}>
-                  {clinicalNotes || 'Lumbar mobilization (Grade II) performed with IFT 15 min at 80-100Hz. Core stabilization exercises and hamstring stretches instructed. Post-treatment pain significantly reduced. Patient discharged safely in home environment.'}
+          {clinicianTab === 'COMPLETED' ? (
+            completedAppointments.length === 0 ? (
+              /* NO COMPLETED SESSIONS YET */
+              <View style={{ alignItems: 'center', padding: 32, backgroundColor: '#ffffff', borderRadius: 16, borderWidth: 1, borderColor: '#e2e8f0', marginTop: 12 }}>
+                <Text style={{ fontSize: 44, marginBottom: 12 }}>📁</Text>
+                <Text style={{ fontSize: 18, fontWeight: 'bold', color: '#0f172a', textAlign: 'center' }}>
+                  No Completed Sessions Yet
+                </Text>
+                <Text style={{ fontSize: 14, color: '#64748b', textAlign: 'center', marginTop: 6, lineHeight: 20 }}>
+                  Visits completed and verified with patient discharge OTP 8844 will appear here in locked, read-only SOAP format.
                 </Text>
               </View>
+            ) : (
+              /* COMPLETED SESSIONS (READ-ONLY & NON-EDITABLE) - PROPERLY BOUND TO ASSIGNED PATIENT */
+              (() => {
+                const targetCompletedApt = lastCompletedAppointment || completedAppointments[0];
+                const ptName = targetCompletedApt.patient?.fullName || targetCompletedApt.request?.patient?.fullName || 'Patient';
+                const ptPhone = targetCompletedApt.patient?.phoneNumber || targetCompletedApt.request?.patient?.phoneNumber || 'N/A';
+                const ptAddress = targetCompletedApt.request?.addressLine || targetCompletedApt.request?.address?.addressLine || 'Indiranagar, Bengaluru';
+                const feeVal = targetCompletedApt.totalFee || targetCompletedApt.totalAmount || 850;
+                const notesVal = targetCompletedApt.clinicalNotes || clinicalNotes || 'Clinical visit completed and discharged safely.';
+                const categoryName = targetCompletedApt.request?.category?.name || 'Orthopedic & Musculoskeletal';
 
-              <View style={styles.readyForNextNotice}>
-                <Text style={styles.readyForNextIcon}>⏳</Text>
-                <Text style={styles.readyForNextText}>
-                  Standing by for next in-home dispatch assignment from Care Desk...
-                </Text>
-              </View>
-            </View>
+                return (
+                  <View style={styles.completedCard}>
+                    <View style={styles.completedHeaderRow}>
+                      <View style={styles.completedTagBox}>
+                        <Text style={styles.completedTagText}>✓ SESSION COMPLETED</Text>
+                      </View>
+                      <View style={styles.readOnlyTag}>
+                        <Text style={styles.readOnlyTagText}>🔒 READ-ONLY</Text>
+                      </View>
+                    </View>
+
+                    <Text style={styles.completedSessionHeadline}>
+                      Discharge Verified & Session Closed
+                    </Text>
+                    <Text style={styles.completedSessionSub}>
+                      This clinical visit has been successfully finalized. Payment was collected and OTP 8844 was verified. Status and treatment notes are locked and non-editable.
+                    </Text>
+
+                    {/* READ ONLY METRICS GRID */}
+                    <View style={styles.completedMetricsGrid}>
+                      <View style={styles.completedMetricItem}>
+                        <Text style={styles.completedMetricLabel}>Patient</Text>
+                        <Text style={styles.completedMetricVal}>{ptName}</Text>
+                        <Text style={styles.completedMetricSub}>{ptPhone}</Text>
+                      </View>
+                      <View style={styles.completedMetricItem}>
+                        <Text style={styles.completedMetricLabel}>Discharge OTP</Text>
+                        <Text style={[styles.completedMetricVal, { color: '#059669' }]}>
+                          {targetCompletedApt.completionOtp || '8844'} (Verified ✓)
+                        </Text>
+                        <Text style={styles.completedMetricSub}>Confirmed by Patient</Text>
+                      </View>
+                      <View style={styles.completedMetricItem}>
+                        <Text style={styles.completedMetricLabel}>Fee Collected</Text>
+                        <Text style={[styles.completedMetricVal, { color: '#0d9488' }]}>
+                          ₹{feeVal}.00
+                        </Text>
+                        <Text style={styles.completedMetricSub}>Status: SETTLED</Text>
+                      </View>
+                      <View style={styles.completedMetricItem}>
+                        <Text style={styles.completedMetricLabel}>Post-Care VAS</Text>
+                        <Text style={[styles.completedMetricVal, { color: '#0284c7' }]}>
+                          {postPainRating} / 10
+                        </Text>
+                        <Text style={styles.completedMetricSub}>Pain Relieved</Text>
+                      </View>
+                    </View>
+
+                    {/* ADDRESS & SERVICE DETAILS */}
+                    <View style={{ backgroundColor: '#f1f5f9', borderRadius: 10, padding: 12, marginTop: 12 }}>
+                      <Text style={{ fontSize: 12, fontWeight: '700', color: '#334155' }}>📍 Service Address:</Text>
+                      <Text style={{ fontSize: 13, color: '#475569', marginTop: 2 }}>{ptAddress}</Text>
+                      <Text style={{ fontSize: 12, fontWeight: '700', color: '#334155', marginTop: 8 }}>🩺 Specialty Care:</Text>
+                      <Text style={{ fontSize: 13, color: '#0d9488', fontWeight: '600', marginTop: 2 }}>{categoryName}</Text>
+                    </View>
+
+                    {/* LOCKED CLINICAL NOTES */}
+                    <View style={styles.lockedSoapBox}>
+                      <View style={styles.lockedSoapHeader}>
+                        <Text style={styles.lockedSoapTitle}>📋 Final Clinical Record & SOAP Report</Text>
+                        <Text style={styles.lockedSoapBadge}>Locked</Text>
+                      </View>
+                      <Text style={styles.lockedSoapContent}>
+                        {notesVal}
+                      </Text>
+                    </View>
+
+                    {/* PAST COMPLETED VISITS ACCORDION/LIST IF MORE THAN 1 */}
+                    {completedAppointments.length > 1 && (
+                      <View style={{ marginTop: 16 }}>
+                        <Text style={{ fontSize: 14, fontWeight: '700', color: '#1e293b', marginBottom: 8 }}>
+                          Other Completed Sessions ({completedAppointments.length})
+                        </Text>
+                        {completedAppointments.slice(1).map((apt: any) => (
+                          <View key={apt.id} style={{ backgroundColor: '#ffffff', borderRadius: 10, padding: 12, marginBottom: 8, borderWidth: 1, borderColor: '#e2e8f0' }}>
+                            <Text style={{ fontSize: 13, fontWeight: '700', color: '#0f172a' }}>
+                              Patient: {apt.patient?.fullName || 'Patient'}
+                            </Text>
+                            <Text style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>
+                              Fee: ₹{apt.totalFee || apt.totalAmount || 850}.00 • {apt.request?.category?.name || 'Physiotherapy'}
+                            </Text>
+                          </View>
+                        ))}
+                      </View>
+                    )}
+
+                    <View style={styles.readyForNextNotice}>
+                      <Text style={styles.readyForNextIcon}>⏳</Text>
+                      <Text style={styles.readyForNextText}>
+                        Standing by for next in-home dispatch assignment from Care Desk...
+                      </Text>
+                    </View>
+                  </View>
+                );
+              })()
+            )
           ) : (
             /* ACTIVE VISIT (EDITABLE STATUS) */
-            <View style={styles.ptVisitCard}>
-              <View style={styles.ptVisitHeader}>
-                <View>
-                  <Text style={styles.ptPatientName}>{patientProfile.fullName}</Text>
-                  <Text style={styles.ptPatientPhone}>📞 {patientProfile.phone}</Text>
-                </View>
-                <View style={styles.ptTimeTag}>
-                  <Text style={styles.ptTimeTagText}>10:00 AM - 10:45 AM</Text>
-                </View>
-              </View>
+            activeAppointment ? (
+              (() => {
+                const activePtName = activeAppointment.patient?.fullName || activeAppointment.request?.patient?.fullName || 'Patient';
+                const activePtPhone = activeAppointment.patient?.phoneNumber || activeAppointment.request?.patient?.phoneNumber || 'N/A';
+                const activePtAddress = activeAppointment.request?.addressLine || activeAppointment.request?.address?.addressLine || 'Indiranagar, Bengaluru';
+                const activeComplaint = activeAppointment.request?.chiefComplaint || activeAppointment.request?.category?.name || 'Physiotherapy Assessment & Care';
+                const activeConditions = activeAppointment.patient?.medicalConditions || 'None reported';
+                const activeTimeSlot = activeAppointment.request?.preferredTimeSlot || '10:00 AM - 10:45 AM';
 
-              <View style={styles.ptAddressBox}>
-                <Text style={styles.ptAddressText}>📍 {patientProfile.primaryAddress}</Text>
-                <Text style={styles.ptNotesText}>Door Code: {patientProfile.entryNotes}</Text>
-                <Text style={styles.ptComplaintText}>Clinical Focus: Lower Back & Sciatic spasm (VAS 6/10)</Text>
-                <Text style={styles.ptConditionsText}>Pre-existing: {patientProfile.conditions.join(', ')}</Text>
-              </View>
+                return (
+                  <View style={styles.ptVisitCard}>
+                    <View style={styles.ptVisitHeader}>
+                      <View>
+                        <Text style={styles.ptPatientName}>{activePtName}</Text>
+                        <Text style={styles.ptPatientPhone}>📞 {activePtPhone}</Text>
+                      </View>
+                      <View style={styles.ptTimeTag}>
+                        <Text style={styles.ptTimeTagText}>{activeTimeSlot}</Text>
+                      </View>
+                    </View>
 
-              {/* LIFECYCLE ACTION BUTTONS */}
-              <Text style={styles.ptActionHeader}>Update Visit Status:</Text>
-              
-              <View style={styles.ptButtonGroup}>
+                    <View style={styles.ptAddressBox}>
+                      <Text style={styles.ptAddressText}>📍 {activePtAddress}</Text>
+                      <Text style={styles.ptNotesText}>Door Code: Contact upon arrival</Text>
+                      <Text style={styles.ptComplaintText}>Clinical Focus: {activeComplaint}</Text>
+                      <Text style={styles.ptConditionsText}>Pre-existing: {activeConditions}</Text>
+                    </View>
+
+                    {/* LIFECYCLE ACTION BUTTONS */}
+                    <Text style={styles.ptActionHeader}>Update Visit Status:</Text>
+                    
+                    <View style={styles.ptButtonGroup}>
+                      <TouchableOpacity 
+                        style={[styles.ptStatusButton, ptStatus === 'EN_ROUTE' && styles.ptStatusButtonEnRoute]}
+                        onPress={() => handleUpdatePtStatus('EN_ROUTE')}
+                      >
+                        <Text style={styles.ptStatusButtonText}>🚗 1. Start Travel (On The Way)</Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity 
+                        style={[styles.ptStatusButton, ptStatus === 'ARRIVED' && styles.ptStatusButtonArrived]}
+                        onPress={() => handleUpdatePtStatus('ARRIVED')}
+                      >
+                        <Text style={styles.ptStatusButtonText}>🏡 2. Arrived at Door</Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity 
+                        style={[styles.ptStatusButton, ptStatus === 'IN_SESSION' && styles.ptStatusButtonInSession]}
+                        onPress={() => handleUpdatePtStatus('IN_SESSION')}
+                      >
+                        <Text style={styles.ptStatusButtonText}>🩺 3. Start Treatment</Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity 
+                        style={[styles.ptStatusButton, styles.ptStatusButtonComplete]}
+                        onPress={() => setShowCompleteConfirm(true)}
+                      >
+                        <Text style={styles.ptStatusButtonText}>✅ 4. Complete Session & Log SOAP</Text>
+                      </TouchableOpacity>
+                    </View>
+
+                    {/* QUICK TREATMENT TAGS */}
+                    <Text style={[styles.inputMiniLabel, { marginTop: 14 }]}>SOAP Treatment Quick Templates:</Text>
+                    <View style={styles.soapChipsRow}>
+                      {[
+                        'Lumbar Gr II Mobilization', 
+                        'IFT 15 min @ 80-100Hz', 
+                        'Pelvic Tilts & Core Drills', 
+                        'Hamstring 3x30s Stretch'
+                      ].map((tag) => (
+                        <TouchableOpacity 
+                          key={tag}
+                          style={styles.soapChip}
+                          onPress={() => setClinicalNotes((prev) => (prev ? `${prev}, ${tag}` : tag))}
+                        >
+                          <Text style={styles.soapChipText}>+ {tag}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+
+                    <TextInput 
+                      style={[styles.notesInput, { marginTop: 8 }]}
+                      value={clinicalNotes}
+                      onChangeText={setClinicalNotes}
+                      placeholder="Clinical treatment notes (SOAP Lite)..."
+                      placeholderTextColor="#94a3b8"
+                      multiline
+                    />
+                  </View>
+                );
+              })()
+            ) : (
+              <View style={{ alignItems: 'center', padding: 32, backgroundColor: '#ffffff', borderRadius: 16, borderWidth: 1, borderColor: '#e2e8f0', marginTop: 12 }}>
+                <Text style={{ fontSize: 44, marginBottom: 12 }}>⏳</Text>
+                <Text style={{ fontSize: 18, fontWeight: 'bold', color: '#0f172a', textAlign: 'center' }}>
+                  No Active Dispatches Assigned
+                </Text>
+                <Text style={{ fontSize: 14, color: '#64748b', textAlign: 'center', marginTop: 6, lineHeight: 20 }}>
+                  Standing by for next in-home dispatch assignment from Care Desk. When an appointment is assigned, it will appear here in real time.
+                </Text>
                 <TouchableOpacity 
-                  style={[styles.ptStatusButton, ptStatus === 'EN_ROUTE' && styles.ptStatusButtonEnRoute]}
-                  onPress={() => handleUpdatePtStatus('EN_ROUTE')}
+                  style={[styles.authPrimaryBtn, { marginTop: 20, width: '100%', backgroundColor: '#0d9488' }]}
+                  onPress={() => refreshActiveData()}
                 >
-                  <Text style={styles.ptStatusButtonText}>🚗 1. Start Travel (On The Way)</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity 
-                  style={[styles.ptStatusButton, ptStatus === 'ARRIVED' && styles.ptStatusButtonArrived]}
-                  onPress={() => handleUpdatePtStatus('ARRIVED')}
-                >
-                  <Text style={styles.ptStatusButtonText}>🏡 2. Arrived at Door</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity 
-                  style={[styles.ptStatusButton, ptStatus === 'IN_SESSION' && styles.ptStatusButtonInSession]}
-                  onPress={() => handleUpdatePtStatus('IN_SESSION')}
-                >
-                  <Text style={styles.ptStatusButtonText}>🩺 3. Start Treatment</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity 
-                  style={[styles.ptStatusButton, styles.ptStatusButtonComplete]}
-                  onPress={() => setShowCompleteConfirm(true)}
-                >
-                  <Text style={styles.ptStatusButtonText}>✅ 4. Complete Session & Log SOAP</Text>
+                  <Text style={styles.authPrimaryBtnText}>🔄 Refresh Dispatch Feed</Text>
                 </TouchableOpacity>
               </View>
-
-              {/* QUICK TREATMENT TAGS */}
-              <Text style={[styles.inputMiniLabel, { marginTop: 14 }]}>SOAP Treatment Quick Templates:</Text>
-              <View style={styles.soapChipsRow}>
-                {[
-                  'Lumbar Gr II Mobilization', 
-                  'IFT 15 min @ 80-100Hz', 
-                  'Pelvic Tilts & Core Drills', 
-                  'Hamstring 3x30s Stretch'
-                ].map((tag) => (
-                  <TouchableOpacity 
-                    key={tag}
-                    style={styles.soapChip}
-                    onPress={() => setClinicalNotes((prev) => (prev ? `${prev}, ${tag}` : tag))}
-                  >
-                    <Text style={styles.soapChipText}>+ {tag}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-
-              <TextInput 
-                style={[styles.notesInput, { marginTop: 8 }]}
-                value={clinicalNotes}
-                onChangeText={setClinicalNotes}
-                placeholder="Clinical treatment notes (SOAP Lite)..."
-                placeholderTextColor="#94a3b8"
-                multiline
-              />
-              {/* CLINICIAN SIGN OUT BUTTON */}
-              <TouchableOpacity style={[styles.signOutBtn, { marginTop: 24 }]} onPress={handleSignOut}>
-                <Text style={styles.signOutBtnText}>🚪 Sign Out (Clinician)</Text>
-              </TouchableOpacity>
-            </View>
+            )
           )}
+
+          {/* CLINICIAN SIGN OUT BUTTON */}
+          <TouchableOpacity style={[styles.signOutBtn, { marginTop: 24 }]} onPress={handleSignOut}>
+            <Text style={styles.signOutBtnText}>🚪 Sign Out (Clinician)</Text>
+          </TouchableOpacity>
         </ScrollView>
       )}
     </>
@@ -2604,7 +2748,7 @@ export default function App() {
             </View>
             <Text style={styles.modalTitle}>Complete Therapy Session?</Text>
             <Text style={styles.modalSubtitle}>
-              Are you sure you want to complete and finalize the visit for {patientProfile.fullName}?
+              Are you sure you want to complete and finalize the visit for {activeAppointment?.patient?.fullName || 'the patient'}?
             </Text>
             <View style={styles.modalAlertNotice}>
               <Text style={styles.modalAlertText}>
@@ -2649,7 +2793,9 @@ export default function App() {
             <View style={styles.dischargeHeader}>
               <View>
                 <Text style={styles.dischargeTitle}>Session Checkout & Discharge</Text>
-                <Text style={styles.dischargeSub}>Michael Chen • Orthopedic Rehab</Text>
+                <Text style={styles.dischargeSub}>
+                  {activeAppointment?.patient?.fullName || 'Patient'} • {activeAppointment?.request?.category?.name || 'Orthopedic Rehabilitation'}
+                </Text>
               </View>
               <TouchableOpacity 
                 style={styles.modalCloseCircle}
@@ -2707,12 +2853,12 @@ export default function App() {
                   <View style={styles.billSummaryBox}>
                     <Text style={styles.billLabel}>Treatment Summary & Balance</Text>
                     <View style={styles.billRow}>
-                      <Text style={styles.billItem}>Orthopedic Home Visit Fee</Text>
-                      <Text style={styles.billItemVal}>₹750.00</Text>
+                      <Text style={styles.billItem}>{activeAppointment?.request?.category?.name || 'Physiotherapy'} Home Visit Fee</Text>
+                      <Text style={styles.billItemVal}>₹{activeAppointment?.baseFee || 750}.00</Text>
                     </View>
                     <View style={styles.billRow}>
-                      <Text style={styles.billItem}>Clinical Platform & Kit Fee</Text>
-                      <Text style={styles.billItemVal}>₹100.00</Text>
+                      <Text style={styles.billItem}>Clinical Platform & Taxes</Text>
+                      <Text style={styles.billItemVal}>₹{(activeAppointment?.platformFee || 0) + (activeAppointment?.tax || 0) + (activeAppointment?.distanceTierFee || 0) || 100}.00</Text>
                     </View>
                     <View style={styles.billDivider} />
                     <View style={styles.billRow}>

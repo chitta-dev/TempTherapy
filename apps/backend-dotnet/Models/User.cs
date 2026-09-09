@@ -38,5 +38,12 @@ public class User
     [MaxLength(255)]
     public string PasswordHash { get; set; } = "password@1234";
 
+    [MaxLength(100)]
+    public string? ActivationToken { get; set; }
+
+    public DateTime? ActivationTokenExpiresAt { get; set; }
+
+    public bool IsActivated { get; set; } = false;
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }

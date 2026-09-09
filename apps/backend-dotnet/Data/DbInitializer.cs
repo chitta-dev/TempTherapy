@@ -1,4 +1,6 @@
 using TherapyCare.Api.Models;
+using TherapyCare.Api.Services;
+using Microsoft.EntityFrameworkCore;
 
 namespace TherapyCare.Api.Data;
 
@@ -8,12 +10,76 @@ public static class DbInitializer
     {
         context.Database.EnsureCreated();
 
+        // 1. Ensure table schema has activation columns in Postgres or SQLite
+        try
+        {
+            var isPostgres = context.Database.ProviderName?.Contains("Npgsql", StringComparison.OrdinalIgnoreCase) ?? false;
+            if (isPostgres)
+            {
+                context.Database.ExecuteSqlRaw(@"
+                    ALTER TABLE users ADD COLUMN IF NOT EXISTS activation_token VARCHAR(100);
+                    ALTER TABLE users ADD COLUMN IF NOT EXISTS activation_token_expires_at TIMESTAMP WITH TIME ZONE;
+                    ALTER TABLE users ADD COLUMN IF NOT EXISTS is_activated BOOLEAN DEFAULT FALSE;
+                ");
+            }
+            else
+            {
+                try { context.Database.ExecuteSqlRaw("ALTER TABLE users ADD COLUMN activation_token TEXT;"); } catch { }
+                try { context.Database.ExecuteSqlRaw("ALTER TABLE users ADD COLUMN activation_token_expires_at TEXT;"); } catch { }
+                try { context.Database.ExecuteSqlRaw("ALTER TABLE users ADD COLUMN is_activated INTEGER DEFAULT 0;"); } catch { }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[DB-MIGRATION] Migration note: {ex.Message}");
+        }
+
         if (context.Categories.Any())
         {
             var admin = context.Users.Find("usr_admin");
-            if (admin != null && admin.Email != "admin@therapyhub.health")
+            if (admin == null)
             {
-                admin.Email = "admin@therapyhub.health";
+                admin = new User
+                {
+                    Id = "usr_admin",
+                    Role = UserRole.Admin,
+                    FullName = "Dr. Arthur Mitchell (Root Admin)",
+                    Email = "admin@therapyhub.health",
+                    PhoneNumber = "+91 98765 43210",
+                    PasswordHash = PasswordSecurity.HashPassword("password@1234"),
+                    IsActivated = true,
+                    CreatedAt = DateTime.UtcNow
+                };
+                context.Users.Add(admin);
+            }
+            else
+            {
+                if (admin.Email != "admin@therapyhub.health")
+                {
+                    admin.Email = "admin@therapyhub.health";
+                }
+                if (!PasswordSecurity.IsSaltAndHashed(admin.PasswordHash))
+                {
+                    admin.PasswordHash = PasswordSecurity.HashPassword("password@1234");
+                }
+            }
+
+            // Ensure DeskBoy user exists
+            var desk = context.Users.FirstOrDefault(u => u.Email == "desk.alex@therapyhub.health");
+            if (desk == null)
+            {
+                desk = new User
+                {
+                    Id = "usr_desk_alex",
+                    Role = UserRole.Dispatcher,
+                    FullName = "Alex Morgan (Front-Desk)",
+                    Email = "desk.alex@therapyhub.health",
+                    PhoneNumber = "+91 98765 11223",
+                    PasswordHash = PasswordSecurity.HashPassword("password@1234"),
+                    IsActivated = true,
+                    CreatedAt = DateTime.UtcNow
+                };
+                context.Users.Add(desk);
             }
 
             var jenkins = context.Users.FirstOrDefault(u => u.Role == UserRole.Therapist);
@@ -53,6 +119,46 @@ public static class DbInitializer
             else if (string.IsNullOrWhiteSpace(jenkins.PhoneNumber) || jenkins.PhoneNumber.StartsWith("+1"))
             {
                 jenkins.PhoneNumber = "+91 98765 00001";
+            }
+
+            // Ensure Dr. Marcus Vance also exists as a certified clinician
+            var vance = context.Users.FirstOrDefault(u => u.Id == "usr_pt_vance");
+            if (vance == null)
+            {
+                vance = new User
+                {
+                    Id = "usr_pt_vance",
+                    Role = UserRole.Therapist,
+                    FullName = "Dr. Marcus Vance, PT, MS",
+                    Email = "marcus.vance@therapyhub.health",
+                    PhoneNumber = "+91 98765 00002",
+                    PasswordHash = "password@1234",
+                    BloodGroup = "B+",
+                    CreatedAt = DateTime.UtcNow
+                };
+                context.Users.Add(vance);
+
+                if (!context.TherapistProfiles.Any(t => t.UserId == vance.Id))
+                {
+                    context.TherapistProfiles.Add(new TherapistProfile
+                    {
+                        Id = "pt_vance_2",
+                        UserId = vance.Id,
+                        LicenseNumber = "KA-PT-051184",
+                        SpecializationsJson = "[\"Neurological Rehabilitation\", \"Geriatric & Mobility Care\", \"Cardiopulmonary Conditioning\"]",
+                        ExperienceYears = 11,
+                        Rating = 4.8,
+                        ReviewCount = 94,
+                        IsAvailable = true,
+                        CurrentLatitude = 12.9750,
+                        CurrentLongitude = 77.6050,
+                        ServiceRadiusKm = 20.0
+                    });
+                }
+            }
+            else if (string.IsNullOrWhiteSpace(vance.PhoneNumber) || vance.PhoneNumber.StartsWith("+1"))
+            {
+                vance.PhoneNumber = "+91 98765 00002";
             }
 
             context.SaveChanges();
