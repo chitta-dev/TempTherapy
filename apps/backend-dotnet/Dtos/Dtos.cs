@@ -3,6 +3,7 @@ using TherapyCare.Api.Models;
 namespace TherapyCare.Api.Dtos;
 
 public record CreateServiceRequestDto(
+    string? PatientId,
     string? CategoryId,
     string? TargetArea,
     int? PainSeverity,

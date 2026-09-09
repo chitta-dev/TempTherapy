@@ -222,8 +222,10 @@ export default function App() {
   const [symptoms, setSymptoms] = useState('Sharp lumbar stiffness on bending forward, radiates slightly to left hamstring.');
   const [paymentMode, setPaymentMode] = useState<'CASH' | 'CARD'>('CASH');
 
-  // Active Backend Appointment
+  // Active & Completed Backend Appointments
   const [activeAppointment, setActiveAppointment] = useState<Appointment | null>(null);
+  const [completedAppointments, setCompletedAppointments] = useState<Appointment[]>([]);
+  const [lastCompletedAppointment, setLastCompletedAppointment] = useState<Appointment | null>(null);
 
   // Therapist Cockpit State
   const [ptStatus, setPtStatus] = useState<'ASSIGNED' | 'EN_ROUTE' | 'ARRIVED' | 'IN_SESSION' | 'COMPLETED'>('ASSIGNED');
@@ -300,15 +302,46 @@ export default function App() {
     }
   };
 
-  // Fetch initial active appointment from backend
+  // Fetch active and completed appointments from backend with proper patient syncing
   const refreshActiveData = async () => {
     try {
-      const res = await fetch(`${API_BASE}/appointments`);
+      const url = sessionLease?.userId 
+        ? `${API_BASE}/appointments?patientId=${sessionLease.userId}`
+        : `${API_BASE}/appointments`;
+      const res = await fetch(url);
       const data = await res.json();
-      const aptList = Array.isArray(data) ? data : (data.appointments || []);
-      if (aptList.length > 0) {
-        setActiveAppointment(aptList[0]);
-        setPtStatus(aptList[0].status);
+      let aptList: Appointment[] = Array.isArray(data) ? data : (data.appointments || []);
+
+      // If patient is logged in and backend returned full list, ensure filtering by this patient or phone
+      if (roleMode === 'PATIENT' && sessionLease?.userId) {
+        const patientFiltered = aptList.filter((a: any) => 
+          a.patientId === sessionLease.userId || 
+          a.patient?.phoneNumber === sessionLease.phoneNumber ||
+          a.patient?.id === sessionLease.userId
+        );
+        if (patientFiltered.length > 0) {
+          aptList = patientFiltered;
+        }
+      }
+
+      // Filter active (in-progress) appointments vs completed
+      const active = aptList.find((a: any) => a.status !== 'COMPLETED' && a.status !== 'CANCELLED');
+      const completed = aptList.filter((a: any) => a.status === 'COMPLETED');
+
+      setCompletedAppointments(completed);
+      if (completed.length > 0) {
+        setLastCompletedAppointment(completed[0]);
+      }
+
+      if (active) {
+        setActiveAppointment(active);
+        setPtStatus(active.status as any);
+      } else {
+        // No active live appointment!
+        setActiveAppointment(null);
+        if (completed.length > 0) {
+          setPtStatus('COMPLETED');
+        }
       }
     } catch (e) {
       console.log('Using local state mode');
@@ -327,6 +360,10 @@ export default function App() {
 
     connection.start()
       .then(() => {
+        connection.invoke('JoinDispatchDesk');
+        if (sessionLease?.userId) {
+          connection.invoke('JoinPatientChannel', sessionLease.userId);
+        }
         connection.invoke('JoinPatientChannel', 'usr_patient_1');
       })
       .catch(err => {
@@ -334,21 +371,31 @@ export default function App() {
       });
 
     connection.on('ReceiveAppointmentAssigned', (apt: any) => {
-      setActiveAppointment(apt);
-      setPtStatus(apt.status);
+      refreshActiveData();
       showToast('SUCCESS', '⚡ Clinician Dispatched!', 'Dr. Sarah Jenkins has been assigned to your home visit.');
       setActiveTab('status');
     });
 
     connection.on('ReceiveVisitStatusUpdated', (payload: any) => {
-      setPtStatus(payload.status);
-      showToast('INFO', '🚗 Visit Progress Update', `Your therapist is now: ${payload.status}`);
+      if (payload.status === 'COMPLETED' || payload.completed) {
+        showToast('SUCCESS', '🎉 Session Completed!', 'Your therapy session has been completed and discharged.');
+        refreshActiveData();
+      } else {
+        setPtStatus(payload.status);
+        showToast('INFO', '🚗 Visit Progress Update', `Your therapist is now: ${payload.status?.replace('_', ' ')}`);
+        refreshActiveData();
+      }
+    });
+
+    connection.on('ReceivePaymentSettled', (payload: any) => {
+      showToast('SUCCESS', '💰 Payment Settled', `Payment of ₹${payload.totalFee || 850} confirmed.`);
+      refreshActiveData();
     });
 
     return () => {
       connection.stop();
     };
-  }, [roleMode]);
+  }, [roleMode, sessionLease?.userId]);
 
   // Toggle pain area selection
   const togglePainArea = (area: string) => {
@@ -707,18 +754,15 @@ export default function App() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          patientId: sessionLease?.userId,
           createdByUserRole: 'PATIENT',
           categoryId: selectedCategory.id,
-          address: {
-            addressLine: patientProfile.primaryAddress,
-            city: 'New York',
-            pinCode: '10024',
-            coordinates: { latitude: 40.7850, longitude: -73.9680 },
-            entryInstructions: patientProfile.entryNotes
-          },
-          painAreas: selectedPainAreas,
-          conditionDescription: `[Patient: ${patientProfile.fullName}, Age: ${patientProfile.age}, Conditions: ${patientProfile.conditions.join(', ')}] [VAS ${painSeverity}/10] ${symptoms}`,
-          preferredTimeWindow: preferredWindowText,
+          addressLine: patientProfile.primaryAddress,
+          targetArea: selectedPainAreas.join(', '),
+          painSeverity: painSeverity,
+          chiefComplaint: `[Patient: ${patientProfile.fullName}, Age: ${patientProfile.age}, Conditions: ${patientProfile.conditions.join(', ')}] [VAS ${painSeverity}/10] ${symptoms}`,
+          preferredDate: selectedDate.dayName,
+          preferredTimeSlot: selectedTimeSlot,
           urgency: painSeverity >= 8 ? 'URGENT' : 'NORMAL'
         })
       });
@@ -1698,176 +1742,283 @@ export default function App() {
           )}
 
           {/* ========================================================================= */}
-          {/* TAB 2: LIVE APPOINTMENT TRACKING */}
+          {/* TAB 2: LIVE APPOINTMENT TRACKING & CARE SUMMARY */}
           {/* ========================================================================= */}
           {activeTab === 'status' && (
             <ScrollView style={styles.scrollArea} contentContainerStyle={{ padding: 16, paddingBottom: 60 }}>
-              <View style={styles.statusHeroCard}>
-                <View style={styles.statusHeroTop}>
-                  <View style={styles.statusLivePill}>
-                    <View style={styles.pulsingDot} />
-                    <Text style={styles.statusLivePillText}>
-                      {activeAppointment ? activeAppointment.status.replace('_', ' ') : 'CARE DESK REVIEW'}
-                    </Text>
-                  </View>
-                  <Text style={styles.statusHeroFee}>₹{activeAppointment?.totalAmount || activeAppointment?.totalFee || selectedCategory.basePriceINR || selectedCategory.basePriceUSD}</Text>
-                </View>
-
-                <Text style={styles.statusHeroTitle}>
-                  {activeAppointment?.request?.category?.name || selectedCategory.name}
+              {/* SUB-HEADER: LIVE STATUS & REFRESH */}
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+                <Text style={{ fontSize: 16, fontWeight: '700', color: '#0f172a' }}>
+                  {activeAppointment && activeAppointment.status !== 'COMPLETED' ? '⚡ Live Visit Tracking' : '📋 Visit Status & Care Plan'}
                 </Text>
-                <Text style={styles.statusHeroAddress}>
-                  📍 {activeAppointment?.request?.address?.addressLine || patientProfile.primaryAddress}
-                </Text>
-
-                {/* CLINICIAN PROFILE DOSSIER */}
-                <View style={styles.clinicianProfileBox}>
-                  <View style={styles.clinicianAvatar}>
-                    <Text style={styles.clinicianAvatarText}>SJ</Text>
-                  </View>
-                  <View style={{ flex: 1, marginLeft: 12 }}>
-                    <Text style={styles.clinicianName}>
-                      {activeAppointment?.therapist?.user?.fullName || 'Dr. Sarah Jenkins, PT, DPT'}
-                    </Text>
-                    <Text style={styles.clinicianMeta}>
-                      Senior Clinician • 7 yrs experience • ★ 4.9 (128 visits)
-                    </Text>
-                    <Text style={styles.clinicianLicense}>
-                      License: PT-NY-849204 • Orthopedic Specialist
-                    </Text>
-                  </View>
-                </View>
-
-                {/* QUICK ACTION BUTTONS */}
-                <View style={styles.clinicianActionRow}>
-                  <TouchableOpacity 
-                    style={styles.clinicianActionBtn}
-                    onPress={() => setCommModal({
-                      visible: true,
-                      mode: 'CALL',
-                      name: activeAppointment?.therapist?.user?.fullName || 'Dr. Sarah Jenkins, PT, DPT',
-                      phone: '+1 (555) 987-6543'
-                    })}
-                  >
-                    <Text style={styles.clinicianActionText}>📞 Call Clinician</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity 
-                    style={styles.clinicianActionBtn}
-                    onPress={() => setCommModal({
-                      visible: true,
-                      mode: 'CHAT',
-                      name: activeAppointment?.therapist?.user?.fullName || 'Dr. Sarah Jenkins, PT, DPT',
-                      phone: '+1 (555) 987-6543'
-                    })}
-                  >
-                    <Text style={styles.clinicianActionText}>💬 Send Message</Text>
-                  </TouchableOpacity>
-                </View>
-
-                {/* STEP-BY-STEP TRACKER */}
-                <View style={styles.stepperBox}>
-                  <Text style={styles.stepperHeader}>Real-Time Visit Timeline:</Text>
-                  
-                  <View style={styles.timelineItem}>
-                    <Text style={styles.timelineIcon}>✅</Text>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.timelineTitle}>1. Request Confirmed & Scheduled</Text>
-                      <Text style={styles.timelineSub}>{selectedDate.dayName}, {selectedDate.dateStr} at {selectedTimeSlot}</Text>
-                    </View>
-                  </View>
-
-                  <View style={styles.timelineItem}>
-                    <Text style={styles.timelineIcon}>
-                      {ptStatus === 'EN_ROUTE' || ptStatus === 'ARRIVED' || ptStatus === 'IN_SESSION' || ptStatus === 'COMPLETED' ? '🚗' : '⚪'}
-                    </Text>
-                    <View style={{ flex: 1 }}>
-                      <Text style={[styles.timelineTitle, (ptStatus === 'EN_ROUTE' || ptStatus === 'ARRIVED') && styles.timelineActive]}>
-                        2. Clinician En Route
-                      </Text>
-                      <Text style={styles.timelineSub}>
-                        {ptStatus === 'EN_ROUTE' ? '⚡ Traveling via Toyota Prius • ETA ~14 mins' : 'Transit will start 30 mins before visit'}
-                      </Text>
-                    </View>
-                  </View>
-
-                  <View style={styles.timelineItem}>
-                    <Text style={styles.timelineIcon}>
-                      {ptStatus === 'ARRIVED' || ptStatus === 'IN_SESSION' || ptStatus === 'COMPLETED' ? '🏡' : '⚪'}
-                    </Text>
-                    <View style={{ flex: 1 }}>
-                      <Text style={[styles.timelineTitle, ptStatus === 'ARRIVED' && styles.timelineActive]}>
-                        3. Arrived at Your Door
-                      </Text>
-                      <Text style={styles.timelineSub}>Please buzz clinician into building</Text>
-                    </View>
-                  </View>
-
-                  <View style={styles.timelineItem}>
-                    <Text style={styles.timelineIcon}>
-                      {ptStatus === 'IN_SESSION' || ptStatus === 'COMPLETED' ? '🩺' : '⚪'}
-                    </Text>
-                    <View style={{ flex: 1 }}>
-                      <Text style={[styles.timelineTitle, ptStatus === 'IN_SESSION' && styles.timelineActive]}>
-                        4. Hands-On Therapy in Progress
-                      </Text>
-                      <Text style={styles.timelineSub}>Joint mobilization, electrotherapy & corrective exercises</Text>
-                    </View>
-                  </View>
-
-                  <View style={styles.timelineItem}>
-                    <Text style={styles.timelineIcon}>
-                      {ptStatus === 'COMPLETED' ? '🎉' : '⚪'}
-                    </Text>
-                    <View style={{ flex: 1 }}>
-                      <Text style={[styles.timelineTitle, ptStatus === 'COMPLETED' && styles.timelineActive]}>
-                        5. Session Completed & Exercise Plan
-                      </Text>
-                      <Text style={styles.timelineSub}>SOAP notes and home rehab regimen logged</Text>
-                    </View>
-                  </View>
-                </View>
-
-                {/* CASH SECURITY OTP CARD */}
-                <View style={styles.otpCard}>
-                  <View style={styles.otpHeader}>
-                    <Text style={styles.otpTitle}>🔒 Cash Collection Security Code</Text>
-                    <Text style={styles.otpTag}>Show Upon Arrival</Text>
-                  </View>
-                  <Text style={styles.otpInstructions}>
-                    Show this 4-digit code to your physiotherapist to verify cash collection:
-                  </Text>
-                  <View style={styles.otpDigitsContainer}>
-                    {(activeAppointment?.cashConfirmationOtp || '7492').split('').map((digit, idx) => (
-                      <View key={idx} style={styles.otpDigitBox}>
-                        <Text style={styles.otpDigitText}>{digit}</Text>
-                      </View>
-                    ))}
-                  </View>
-                </View>
-
-                {/* PATIENT DISCHARGE VERIFICATION OTP CARD */}
-                <View style={[styles.otpCard, { borderColor: '#10b981', marginTop: 14 }]}>
-                  <View style={styles.otpHeader}>
-                    <Text style={[styles.otpTitle, { color: '#065f46' }]}>🔑 Session Discharge Verification OTP</Text>
-                    <View style={[styles.verifiedTag, { backgroundColor: '#ecfdf5', borderColor: '#a7f3d0' }]}>
-                      <Text style={[styles.verifiedTagText, { color: '#047857' }]}>Fixed OTP: 8844</Text>
-                    </View>
-                  </View>
-                  <Text style={styles.otpInstructions}>
-                    Share this 4-digit code with your physiotherapist ONLY after your treatment is fully completed:
-                  </Text>
-                  <View style={styles.otpDigitsContainer}>
-                    {['8', '8', '4', '4'].map((digit, idx) => (
-                      <View key={idx} style={[styles.otpDigitBox, { backgroundColor: '#ecfdf5', borderColor: '#10b981' }]}>
-                        <Text style={[styles.otpDigitText, { color: '#065f46' }]}>{digit}</Text>
-                      </View>
-                    ))}
-                  </View>
-                  <Text style={{ fontSize: 11, color: '#64748b', textAlign: 'center', marginTop: 8 }}>
-                    🛡️ Protects you by ensuring full clinical session time is delivered before discharge.
-                  </Text>
-                </View>
+                <TouchableOpacity 
+                  onPress={refreshActiveData} 
+                  style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#f1f5f9', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, borderWidth: 1, borderColor: '#e2e8f0' }}
+                >
+                  <Text style={{ fontSize: 12, fontWeight: '600', color: '#475569' }}>🔄 Sync Status</Text>
+                </TouchableOpacity>
               </View>
+
+              {/* CASE 1: ACTIVE VISIT IN PROGRESS */}
+              {activeAppointment && activeAppointment.status !== 'COMPLETED' ? (
+                <View style={styles.statusHeroCard}>
+                  <View style={styles.statusHeroTop}>
+                    <View style={styles.statusLivePill}>
+                      <View style={styles.pulsingDot} />
+                      <Text style={styles.statusLivePillText}>
+                        {activeAppointment.status.replace('_', ' ')}
+                      </Text>
+                    </View>
+                    <Text style={styles.statusHeroFee}>₹{activeAppointment?.totalAmount || activeAppointment?.totalFee || selectedCategory.basePriceINR || selectedCategory.basePriceUSD}</Text>
+                  </View>
+
+                  <Text style={styles.statusHeroTitle}>
+                    {activeAppointment?.request?.category?.name || selectedCategory.name}
+                  </Text>
+                  <Text style={styles.statusHeroAddress}>
+                    📍 {activeAppointment?.request?.address?.addressLine || patientProfile.primaryAddress}
+                  </Text>
+
+                  {/* CLINICIAN PROFILE DOSSIER */}
+                  <View style={styles.clinicianProfileBox}>
+                    <View style={styles.clinicianAvatar}>
+                      <Text style={styles.clinicianAvatarText}>SJ</Text>
+                    </View>
+                    <View style={{ flex: 1, marginLeft: 12 }}>
+                      <Text style={styles.clinicianName}>
+                        {activeAppointment?.therapist?.user?.fullName || 'Dr. Sarah Jenkins, PT, DPT'}
+                      </Text>
+                      <Text style={styles.clinicianMeta}>
+                        Senior Clinician • 7 yrs experience • ★ 4.9 (128 visits)
+                      </Text>
+                      <Text style={styles.clinicianLicense}>
+                        License: PT-IND-84920 • Orthopedic Specialist
+                      </Text>
+                    </View>
+                  </View>
+
+                  {/* QUICK ACTION BUTTONS */}
+                  <View style={styles.clinicianActionRow}>
+                    <TouchableOpacity 
+                      style={styles.clinicianActionBtn}
+                      onPress={() => setCommModal({
+                        visible: true,
+                        mode: 'CALL',
+                        name: activeAppointment?.therapist?.user?.fullName || 'Dr. Sarah Jenkins, PT, DPT',
+                        phone: '+91 98765 00001'
+                      })}
+                    >
+                      <Text style={styles.clinicianActionText}>📞 Call Clinician</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity 
+                      style={styles.clinicianActionBtn}
+                      onPress={() => setCommModal({
+                        visible: true,
+                        mode: 'CHAT',
+                        name: activeAppointment?.therapist?.user?.fullName || 'Dr. Sarah Jenkins, PT, DPT',
+                        phone: '+91 98765 00001'
+                      })}
+                    >
+                      <Text style={styles.clinicianActionText}>💬 Send Message</Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* STEP-BY-STEP TRACKER */}
+                  <View style={styles.stepperBox}>
+                    <Text style={styles.stepperHeader}>Real-Time Visit Timeline:</Text>
+                    
+                    <View style={styles.timelineItem}>
+                      <Text style={styles.timelineIcon}>✅</Text>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.timelineTitle}>1. Request Confirmed & Scheduled</Text>
+                        <Text style={styles.timelineSub}>{selectedDate.dayName}, {selectedDate.dateStr} at {selectedTimeSlot}</Text>
+                      </View>
+                    </View>
+
+                    <View style={styles.timelineItem}>
+                      <Text style={styles.timelineIcon}>
+                        {ptStatus === 'EN_ROUTE' || ptStatus === 'ARRIVED' || ptStatus === 'IN_SESSION' ? '🚗' : '⚪'}
+                      </Text>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.timelineTitle, (ptStatus === 'EN_ROUTE' || ptStatus === 'ARRIVED') && styles.timelineActive]}>
+                          2. Clinician En Route
+                        </Text>
+                        <Text style={styles.timelineSub}>
+                          {ptStatus === 'EN_ROUTE' ? '⚡ Traveling via EV Scooter • ETA ~14 mins' : 'Transit will start 30 mins before visit'}
+                        </Text>
+                      </View>
+                    </View>
+
+                    <View style={styles.timelineItem}>
+                      <Text style={styles.timelineIcon}>
+                        {ptStatus === 'ARRIVED' || ptStatus === 'IN_SESSION' ? '🏡' : '⚪'}
+                      </Text>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.timelineTitle, ptStatus === 'ARRIVED' && styles.timelineActive]}>
+                          3. Arrived at Your Door
+                        </Text>
+                        <Text style={styles.timelineSub}>Please buzz clinician into building</Text>
+                      </View>
+                    </View>
+
+                    <View style={styles.timelineItem}>
+                      <Text style={styles.timelineIcon}>
+                        {ptStatus === 'IN_SESSION' ? '🩺' : '⚪'}
+                      </Text>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.timelineTitle, ptStatus === 'IN_SESSION' && styles.timelineActive]}>
+                          4. Hands-On Therapy in Progress
+                        </Text>
+                        <Text style={styles.timelineSub}>Joint mobilization, electrotherapy & corrective exercises</Text>
+                      </View>
+                    </View>
+                  </View>
+
+                  {/* CASH SECURITY OTP CARD */}
+                  <View style={styles.otpCard}>
+                    <View style={styles.otpHeader}>
+                      <Text style={styles.otpTitle}>🔒 Cash Collection Security Code</Text>
+                      <Text style={styles.otpTag}>Show Upon Arrival</Text>
+                    </View>
+                    <Text style={styles.otpInstructions}>
+                      Show this 4-digit code to your physiotherapist to verify cash collection:
+                    </Text>
+                    <View style={styles.otpDigitsContainer}>
+                      {(activeAppointment?.cashConfirmationOtp || '7492').split('').map((digit, idx) => (
+                        <View key={idx} style={styles.otpDigitBox}>
+                          <Text style={styles.otpDigitText}>{digit}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  </View>
+
+                  {/* PATIENT DISCHARGE VERIFICATION OTP CARD */}
+                  <View style={[styles.otpCard, { borderColor: '#10b981', marginTop: 14 }]}>
+                    <View style={styles.otpHeader}>
+                      <Text style={[styles.otpTitle, { color: '#065f46' }]}>🔑 Session Discharge Verification OTP</Text>
+                      <View style={[styles.verifiedTag, { backgroundColor: '#ecfdf5', borderColor: '#a7f3d0' }]}>
+                        <Text style={[styles.verifiedTagText, { color: '#047857' }]}>Fixed OTP: 8844</Text>
+                      </View>
+                    </View>
+                    <Text style={styles.otpInstructions}>
+                      Share this 4-digit code with your physiotherapist ONLY after your treatment is fully completed:
+                    </Text>
+                    <View style={styles.otpDigitsContainer}>
+                      {['8', '8', '4', '4'].map((digit, idx) => (
+                        <View key={idx} style={[styles.otpDigitBox, { backgroundColor: '#ecfdf5', borderColor: '#10b981' }]}>
+                          <Text style={[styles.otpDigitText, { color: '#065f46' }]}>{digit}</Text>
+                        </View>
+                      ))}
+                    </View>
+                    <Text style={{ fontSize: 11, color: '#64748b', textAlign: 'center', marginTop: 8 }}>
+                      🛡️ Protects you by ensuring full clinical session time is delivered before discharge.
+                    </Text>
+                  </View>
+                </View>
+              ) : lastCompletedAppointment || completedAppointments.length > 0 ? (
+                /* CASE 2: SESSION COMPLETED & DISCHARGED SUMMARY */
+                <View>
+                  <View style={[styles.completedCard, { backgroundColor: '#ffffff', borderColor: '#86efac', borderWidth: 1.5 }]}>
+                    <View style={styles.completedHeaderRow}>
+                      <View style={[styles.completedTagBox, { backgroundColor: '#dcfce7' }]}>
+                        <Text style={[styles.completedTagText, { color: '#15803d' }]}>✓ SESSION COMPLETED</Text>
+                      </View>
+                      <View style={[styles.readOnlyTag, { backgroundColor: '#f0fdf4', borderColor: '#bbf7d0' }]}>
+                        <Text style={[styles.readOnlyTagText, { color: '#16a34a' }]}>DISCHARGED & LOCKED</Text>
+                      </View>
+                    </View>
+
+                    <Text style={styles.completedSessionHeadline}>
+                      Session Finished & Verified 🎉
+                    </Text>
+                    <Text style={styles.completedSessionSub}>
+                      Your treatment session has been successfully finalized. Clinical discharge was verified with OTP 8844 and payment settled.
+                    </Text>
+
+                    <View style={{ backgroundColor: '#f8fafc', borderRadius: 12, padding: 14, marginTop: 14, borderWidth: 1, borderColor: '#e2e8f0' }}>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
+                        <Text style={{ fontSize: 13, color: '#64748b' }}>Service Category:</Text>
+                        <Text style={{ fontSize: 13, fontWeight: '600', color: '#0f172a' }}>
+                          {lastCompletedAppointment?.request?.category?.name || selectedCategory.name}
+                        </Text>
+                      </View>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
+                        <Text style={{ fontSize: 13, color: '#64748b' }}>Attending Clinician:</Text>
+                        <Text style={{ fontSize: 13, fontWeight: '600', color: '#0f172a' }}>
+                          {lastCompletedAppointment?.therapist?.user?.fullName || 'Dr. Sarah Jenkins, PT, DPT'}
+                        </Text>
+                      </View>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
+                        <Text style={{ fontSize: 13, color: '#64748b' }}>Settlement Amount:</Text>
+                        <Text style={{ fontSize: 13, fontWeight: '700', color: '#16a34a' }}>
+                          ₹{lastCompletedAppointment?.totalFee || lastCompletedAppointment?.totalAmount || 850}.00 (Settled)
+                        </Text>
+                      </View>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                        <Text style={{ fontSize: 13, color: '#64748b' }}>Discharge OTP:</Text>
+                        <Text style={{ fontSize: 13, fontWeight: '600', color: '#0f766e' }}>
+                          Verified (8844)
+                        </Text>
+                      </View>
+                    </View>
+
+                    {lastCompletedAppointment?.clinicalNotes ? (
+                      <View style={{ marginTop: 12, backgroundColor: '#f8fafc', borderColor: '#e2e8f0', borderWidth: 1, borderRadius: 10, padding: 12 }}>
+                        <Text style={{ fontSize: 13, fontWeight: '700', color: '#1e293b', marginBottom: 4 }}>📋 Clinical Treatment Notes:</Text>
+                        <Text style={{ fontSize: 13, color: '#475569', lineHeight: 18 }}>{lastCompletedAppointment.clinicalNotes}</Text>
+                      </View>
+                    ) : null}
+
+                    <TouchableOpacity 
+                      style={[styles.authPrimaryBtn, { marginTop: 16, backgroundColor: '#0d9488' }]}
+                      onPress={() => setActiveTab('request')}
+                    >
+                      <Text style={styles.authPrimaryBtnText}>✨ Book Next Home Visit</Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* PAST COMPLETED VISITS HISTORY */}
+                  {completedAppointments.length > 1 && (
+                    <View style={{ marginTop: 20 }}>
+                      <Text style={{ fontSize: 15, fontWeight: '700', color: '#1e293b', marginBottom: 10 }}>
+                        Past Completed Visits ({completedAppointments.length})
+                      </Text>
+                      {completedAppointments.slice(1).map((apt: any, idx: number) => (
+                        <View key={apt.id || idx} style={{ backgroundColor: '#ffffff', borderRadius: 12, padding: 14, marginBottom: 10, borderWidth: 1, borderColor: '#e2e8f0' }}>
+                          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <Text style={{ fontSize: 14, fontWeight: '700', color: '#0f172a' }}>
+                              {apt.request?.category?.name || 'Physiotherapy Visit'}
+                            </Text>
+                            <Text style={{ fontSize: 13, fontWeight: '700', color: '#16a34a' }}>
+                              ₹{apt.totalFee || 850}.00
+                            </Text>
+                          </View>
+                          <Text style={{ fontSize: 12, color: '#64748b', marginTop: 4 }}>
+                            Clinician: {apt.therapist?.user?.fullName || 'Dr. Sarah Jenkins'} • Completed
+                          </Text>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+                </View>
+              ) : (
+                /* CASE 3: NO VISITS SCHEDULED */
+                <View style={{ alignItems: 'center', padding: 32, backgroundColor: '#ffffff', borderRadius: 16, borderWidth: 1, borderColor: '#e2e8f0', marginTop: 20 }}>
+                  <Text style={{ fontSize: 44, marginBottom: 12 }}>🩺</Text>
+                  <Text style={{ fontSize: 18, fontWeight: 'bold', color: '#0f172a', textAlign: 'center' }}>
+                    No Active Visits In Progress
+                  </Text>
+                  <Text style={{ fontSize: 14, color: '#64748b', textAlign: 'center', marginTop: 6, lineHeight: 20 }}>
+                    Book an in-home physiotherapy session today. A certified clinician will arrive at your doorstep equipped with clinical modalities.
+                  </Text>
+                  <TouchableOpacity 
+                    style={[styles.authPrimaryBtn, { marginTop: 20, width: '100%', backgroundColor: '#0d9488' }]}
+                    onPress={() => setActiveTab('request')}
+                  >
+                    <Text style={styles.authPrimaryBtnText}>✨ Book In-Home Visit Now</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
             </ScrollView>
           )}
 

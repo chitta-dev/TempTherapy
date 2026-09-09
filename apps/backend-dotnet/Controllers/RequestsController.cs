@@ -59,7 +59,13 @@ public class RequestsController : ControllerBase
     [HttpPost]
     public async Task<IActionResult> CreateRequest([FromBody] CreateServiceRequestDto dto)
     {
-        var patient = await _context.Users.FirstOrDefaultAsync(u => u.Role == UserRole.Patient);
+        User? patient = null;
+        if (!string.IsNullOrWhiteSpace(dto.PatientId))
+        {
+            patient = await _context.Users.FindAsync(dto.PatientId);
+        }
+        patient ??= await _context.Users.FirstOrDefaultAsync(u => u.Role == UserRole.Patient);
+
         if (patient == null)
         {
             return BadRequest(new { message = "No registered patient found in the system." });

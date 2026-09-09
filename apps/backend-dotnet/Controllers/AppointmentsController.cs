@@ -31,16 +31,28 @@ public class AppointmentsController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<IActionResult> GetAppointments()
+    public async Task<IActionResult> GetAppointments([FromQuery] string? patientId, [FromQuery] string? status)
     {
-        var appointments = await _context.Appointments
+        var query = _context.Appointments
             .Include(a => a.Patient)
             .Include(a => a.Request)
                 .ThenInclude(r => r!.Category)
             .Include(a => a.Therapist)
                 .ThenInclude(t => t!.User)
+            .AsNoTracking();
+
+        if (!string.IsNullOrWhiteSpace(patientId))
+        {
+            query = query.Where(a => a.PatientId == patientId);
+        }
+
+        if (!string.IsNullOrWhiteSpace(status) && Enum.TryParse<AppointmentStatus>(status, true, out var aptStatus))
+        {
+            query = query.Where(a => a.Status == aptStatus);
+        }
+
+        var appointments = await query
             .OrderByDescending(a => a.CreatedAt)
-            .AsNoTracking()
             .ToListAsync();
 
         return Ok(appointments);
