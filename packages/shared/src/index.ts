@@ -102,6 +102,10 @@ export interface ServiceRequest {
   prescriptionImageUrl?: string;
   status: RequestStatus;
   urgency: 'NORMAL' | 'URGENT';
+  sessionIndex?: number;
+  totalSessions?: number;
+  packageName?: string;
+  offlineConsultationNotes?: string;
   createdAt: string;
 }
 
@@ -135,10 +139,17 @@ export interface Appointment {
   sessionStartedAt?: string;
   sessionCompletedAt?: string;
   cashConfirmationOtp?: string;
+  completionOtp?: string;
   clinicalNotes?: string;
   prescribedExercises?: string[];
   patientRating?: number;
   patientFeedback?: string;
+  
+  // Multi-session care plan tracking
+  sessionIndex?: number;
+  totalSessions?: number;
+  packageName?: string;
+  offlineConsultationNotes?: string;
   createdAt: string;
 }
 

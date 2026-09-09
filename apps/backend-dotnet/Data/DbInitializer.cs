@@ -21,6 +21,15 @@ public static class DbInitializer
                     ALTER TABLE users ADD COLUMN IF NOT EXISTS activation_token_expires_at TIMESTAMP WITH TIME ZONE;
                     ALTER TABLE users ADD COLUMN IF NOT EXISTS is_activated BOOLEAN DEFAULT FALSE;
                     ALTER TABLE users ADD COLUMN IF NOT EXISTS previous_passwords_json TEXT;
+
+                    ALTER TABLE appointments ADD COLUMN IF NOT EXISTS session_index INTEGER DEFAULT 1;
+                    ALTER TABLE appointments ADD COLUMN IF NOT EXISTS total_sessions INTEGER DEFAULT 1;
+                    ALTER TABLE appointments ADD COLUMN IF NOT EXISTS package_name VARCHAR(150);
+                    ALTER TABLE appointments ADD COLUMN IF NOT EXISTS offline_consultation_notes TEXT;
+
+                    ALTER TABLE service_requests ADD COLUMN IF NOT EXISTS total_sessions INTEGER DEFAULT 1;
+                    ALTER TABLE service_requests ADD COLUMN IF NOT EXISTS package_name VARCHAR(150);
+                    ALTER TABLE service_requests ADD COLUMN IF NOT EXISTS offline_consultation_notes TEXT;
                 ");
             }
             else
@@ -29,6 +38,15 @@ public static class DbInitializer
                 try { context.Database.ExecuteSqlRaw("ALTER TABLE users ADD COLUMN activation_token_expires_at TEXT;"); } catch { }
                 try { context.Database.ExecuteSqlRaw("ALTER TABLE users ADD COLUMN is_activated INTEGER DEFAULT 0;"); } catch { }
                 try { context.Database.ExecuteSqlRaw("ALTER TABLE users ADD COLUMN previous_passwords_json TEXT;"); } catch { }
+
+                try { context.Database.ExecuteSqlRaw("ALTER TABLE appointments ADD COLUMN session_index INTEGER DEFAULT 1;"); } catch { }
+                try { context.Database.ExecuteSqlRaw("ALTER TABLE appointments ADD COLUMN total_sessions INTEGER DEFAULT 1;"); } catch { }
+                try { context.Database.ExecuteSqlRaw("ALTER TABLE appointments ADD COLUMN package_name TEXT;"); } catch { }
+                try { context.Database.ExecuteSqlRaw("ALTER TABLE appointments ADD COLUMN offline_consultation_notes TEXT;"); } catch { }
+
+                try { context.Database.ExecuteSqlRaw("ALTER TABLE service_requests ADD COLUMN total_sessions INTEGER DEFAULT 1;"); } catch { }
+                try { context.Database.ExecuteSqlRaw("ALTER TABLE service_requests ADD COLUMN package_name TEXT;"); } catch { }
+                try { context.Database.ExecuteSqlRaw("ALTER TABLE service_requests ADD COLUMN offline_consultation_notes TEXT;"); } catch { }
             }
         }
         catch (Exception ex)

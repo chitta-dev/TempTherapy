@@ -45,5 +45,14 @@ public class ServiceRequest
 
     public UrgencyLevel Urgency { get; set; } = UrgencyLevel.ROUTINE;
 
+    // Multi-Session Care Plan Tracking
+    public int TotalSessions { get; set; } = 1;
+
+    [MaxLength(150)]
+    public string? PackageName { get; set; }
+
+    [MaxLength(1000)]
+    public string? OfflineConsultationNotes { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }

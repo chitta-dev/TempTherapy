@@ -394,7 +394,19 @@ export const ActiveDispatchesGrid: React.FC<ActiveDispatchesGridProps> = ({
                     return (
                       <tr key={apt.id} className="hover:bg-slate-50/70 transition">
                         <td className="p-4 font-mono font-bold text-[11px] text-slate-600 whitespace-nowrap">
-                          #{apt.id}
+                          <div>#{apt.id}</div>
+                          {apt.totalSessions > 1 && (
+                            <div className="mt-1">
+                              <span className="inline-block px-2 py-0.5 rounded text-[10px] font-black bg-purple-50 text-purple-700 border border-purple-200">
+                                Session {apt.sessionIndex || 1} of {apt.totalSessions}
+                              </span>
+                              {apt.packageName && (
+                                <div className="text-[9px] text-slate-500 font-sans mt-0.5 font-semibold">
+                                  {apt.packageName}
+                                </div>
+                              )}
+                            </div>
+                          )}
                         </td>
                         <td className="p-4">
                           <div className="font-bold text-slate-900">{patientName}</div>
@@ -403,6 +415,12 @@ export const ActiveDispatchesGrid: React.FC<ActiveDispatchesGridProps> = ({
                             <MapPin className="w-3 h-3 text-rose-500 shrink-0" />
                             <span className="truncate max-w-[200px]">{address}</span>
                           </div>
+                          {apt.scheduledStart && (
+                            <div className="text-teal-700 font-semibold text-[10px] flex items-center space-x-1 mt-0.5">
+                              <Clock className="w-3 h-3 text-teal-600 shrink-0" />
+                              <span>{new Date(apt.scheduledStart).toLocaleDateString([], { month: 'short', day: 'numeric' })} • {new Date(apt.scheduledStart).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                            </div>
+                          )}
                         </td>
                         <td className="p-4">
                           <div className="font-bold text-slate-900">{therapistName}</div>
@@ -410,7 +428,7 @@ export const ActiveDispatchesGrid: React.FC<ActiveDispatchesGridProps> = ({
                             Lic: {apt.therapist?.licenseNumber || 'PT-IND-9204'}
                           </div>
                           <div className="text-teal-700 font-bold text-[10px] mt-0.5">
-                            Discharge OTP: 8844
+                            Discharge OTP: <span className="font-mono bg-teal-50 px-1.5 py-0.5 rounded border border-teal-200 text-teal-800">{apt.completionOtp || '8844'}</span>
                           </div>
                         </td>
                         <td className="p-4">
@@ -506,10 +524,15 @@ export const ActiveDispatchesGrid: React.FC<ActiveDispatchesGridProps> = ({
               return (
                 <div key={apt.id} className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-xs hover:border-teal-300 transition space-y-4">
                   <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3">
-                    <div className="flex items-center space-x-3">
+                    <div className="flex flex-wrap items-center gap-2">
                       <span className="text-xs font-mono font-bold bg-slate-100 text-slate-700 px-2.5 py-1 rounded-lg border border-slate-200/70">
                         #{apt.id}
                       </span>
+                      {apt.totalSessions > 1 && (
+                        <span className="text-xs font-black text-purple-700 bg-purple-50 px-2.5 py-1 rounded-full border border-purple-200">
+                          Session {apt.sessionIndex || 1} of {apt.totalSessions} {apt.packageName ? `• ${apt.packageName}` : ''}
+                        </span>
+                      )}
                       <span className="text-xs font-bold text-teal-800 bg-teal-50 px-3 py-1 rounded-full border border-teal-200/80">
                         {categoryName}
                       </span>
@@ -537,13 +560,26 @@ export const ActiveDispatchesGrid: React.FC<ActiveDispatchesGridProps> = ({
                       <p className="font-bold text-slate-900 text-sm">{patientName}</p>
                       <p className="text-slate-500">{apt.patient?.phoneNumber || apt.patient?.phone || '+91 98765 43210'}</p>
                       <p className="text-slate-500">{apt.request?.addressLine || apt.request?.address?.addressLine || 'Indiranagar, Bengaluru'}</p>
+                      {apt.scheduledStart && (
+                        <p className="text-teal-700 font-semibold flex items-center space-x-1 pt-0.5">
+                          <Clock className="w-3.5 h-3.5 text-teal-600 shrink-0" />
+                          <span>{new Date(apt.scheduledStart).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })} • {new Date(apt.scheduledStart).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                        </p>
+                      )}
                     </div>
 
                     <div className="space-y-1">
                       <span className="text-slate-400 font-bold uppercase text-[10px] block">Assigned Therapist</span>
                       <p className="font-bold text-slate-900 text-sm">{therapistName}</p>
                       <p className="text-slate-500">License: {apt.therapist?.licenseNumber || 'PT-IND-9204'}</p>
-                      <p className="text-teal-700 font-bold">Fixed Discharge OTP: 8844</p>
+                      <p className="text-teal-700 font-bold">
+                        Discharge OTP: <span className="font-mono bg-teal-50 px-1.5 py-0.5 rounded border border-teal-200 text-teal-800">{apt.completionOtp || '8844'}</span>
+                      </p>
+                      {apt.offlineConsultationNotes && (
+                        <p className="text-[11px] text-amber-800 bg-amber-50 p-2 rounded-lg border border-amber-200/70 font-medium mt-1">
+                          <strong className="font-bold">Intake Note:</strong> {apt.offlineConsultationNotes}
+                        </p>
+                      )}
                     </div>
 
                     {/* DeskBoy Payment Collection Box */}

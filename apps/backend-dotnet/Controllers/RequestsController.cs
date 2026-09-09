@@ -148,9 +148,15 @@ public class RequestsController : ControllerBase
             urgency = parsedUrgency;
         }
 
+        int totalSessions = Math.Clamp(dto.TotalSessions ?? 1, 1, 30);
+        var (discountPct, defaultTierName) = PricingService.GetPackageTier(totalSessions);
+        var finalPackageName = !string.IsNullOrWhiteSpace(dto.PackageName) ? dto.PackageName : defaultTierName;
+        var freq = (dto.Frequency ?? "ALTERNATE_DAYS").Trim().ToUpperInvariant();
+        DateTime baseStartTime = dto.ScheduledStart ?? DateTime.UtcNow.AddMinutes(30);
+        int durationMinutes = category.EstimatedDurationMinutes;
+
         TherapistProfile? therapist = null;
-        DateTime startTime = DateTime.UtcNow.AddMinutes(30);
-        DateTime endTime = startTime.AddMinutes(category.EstimatedDurationMinutes);
+        var sessionSlots = new List<(int Index, DateTime Start, DateTime End)>();
 
         if (!string.IsNullOrWhiteSpace(dto.TherapistId))
         {
@@ -168,28 +174,51 @@ public class RequestsController : ControllerBase
                 return BadRequest(new { message = $"Therapist Dr. {therapist.User?.FullName ?? "Selected"} is currently marked as off-duty/unavailable." });
             }
 
-            startTime = dto.ScheduledStart ?? DateTime.UtcNow.AddMinutes(30);
-            endTime = startTime.AddMinutes(category.EstimatedDurationMinutes);
-
-            // Validate therapist availability for the specified slot
-            var conflictingAppointment = await _context.Appointments
-                .Where(a => a.TherapistId == therapist.Id
-                    && a.Status != AppointmentStatus.CANCELLED
-                    && a.Status != AppointmentStatus.COMPLETED
-                    && ((startTime >= a.ScheduledStart && startTime < a.ScheduledEnd)
-                        || (endTime > a.ScheduledStart && endTime <= a.ScheduledEnd)
-                        || (startTime <= a.ScheduledStart && endTime >= a.ScheduledEnd)))
-                .FirstOrDefaultAsync();
-
-            if (conflictingAppointment != null)
+            // 1. Calculate schedule dates for each session
+            for (int i = 0; i < totalSessions; i++)
             {
-                var conflictTherapistName = therapist.User?.FullName?.StartsWith("Dr.") == true 
-                    ? therapist.User.FullName 
-                    : $"Dr. {therapist.User?.FullName ?? "Selected"}";
-                return BadRequest(new
+                DateTime slotStart;
+                if (dto.CustomSessionDates != null && i < dto.CustomSessionDates.Count && dto.CustomSessionDates[i] > DateTime.MinValue)
                 {
-                    message = $"Therapist {conflictTherapistName} is already booked for an appointment from {conflictingAppointment.ScheduledStart:hh:mm tt} to {conflictingAppointment.ScheduledEnd:hh:mm tt}. Please choose an available time or therapist."
-                });
+                    slotStart = dto.CustomSessionDates[i];
+                }
+                else
+                {
+                    slotStart = freq switch
+                    {
+                        "DAILY" => baseStartTime.AddDays(i),
+                        "WEEKLY" => baseStartTime.AddDays(i * 7),
+                        "TWICE_WEEKLY" => baseStartTime.AddDays((i / 2) * 7 + (i % 2 == 1 ? 3 : 0)),
+                        _ => baseStartTime.AddDays(i * 2) // ALTERNATE_DAYS
+                    };
+                }
+                var slotEnd = slotStart.AddMinutes(durationMinutes);
+                sessionSlots.Add((i + 1, slotStart, slotEnd));
+            }
+
+            // 2. Validate therapist availability for all slots
+            var conflictTherapistName = therapist.User?.FullName?.StartsWith("Dr.") == true 
+                ? therapist.User.FullName 
+                : $"Dr. {therapist.User?.FullName ?? "Selected"}";
+
+            foreach (var slot in sessionSlots)
+            {
+                var conflictingAppointment = await _context.Appointments
+                    .Where(a => a.TherapistId == therapist.Id
+                        && a.Status != AppointmentStatus.CANCELLED
+                        && a.Status != AppointmentStatus.COMPLETED
+                        && ((slot.Start >= a.ScheduledStart && slot.Start < a.ScheduledEnd)
+                            || (slot.End > a.ScheduledStart && slot.End <= a.ScheduledEnd)
+                            || (slot.Start <= a.ScheduledStart && slot.End >= a.ScheduledEnd)))
+                    .FirstOrDefaultAsync();
+
+                if (conflictingAppointment != null)
+                {
+                    return BadRequest(new
+                    {
+                        message = $"Scheduling conflict on Session {slot.Index} of {totalSessions} ({slot.Start:ddd, MMM dd 'at' hh:mm tt}): Therapist {conflictTherapistName} is already booked from {conflictingAppointment.ScheduledStart:hh:mm tt} to {conflictingAppointment.ScheduledEnd:hh:mm tt}. Please choose an available time or therapist."
+                    });
+                }
             }
         }
 
@@ -210,12 +239,15 @@ public class RequestsController : ControllerBase
             Longitude = dto.Longitude ?? 77.5946,
             Status = therapist != null ? RequestStatus.ASSIGNED : RequestStatus.PENDING_TRIAGE,
             Urgency = urgency,
+            TotalSessions = totalSessions,
+            PackageName = finalPackageName,
+            OfflineConsultationNotes = dto.OfflineConsultationNotes,
             CreatedAt = DateTime.UtcNow
         };
 
         _context.ServiceRequests.Add(newRequest);
 
-        Appointment? appointment = null;
+        var createdAppointments = new List<Appointment>();
         if (therapist != null)
         {
             double distanceKm = CalculateDistanceKm(
@@ -224,7 +256,7 @@ public class RequestsController : ControllerBase
             );
 
             decimal basePrice = category.BasePrice;
-            var fee = _pricingService.CalculateSessionFee(basePrice, distanceKm, newRequest.Urgency);
+            var fee = _pricingService.CalculatePackageSessionFee(basePrice, distanceKm, newRequest.Urgency, totalSessions);
 
             var paymentMode = PaymentMode.CASH;
             if (!string.IsNullOrEmpty(dto.PaymentMode) && Enum.TryParse<PaymentMode>(dto.PaymentMode, true, out var parsedMode))
@@ -232,47 +264,63 @@ public class RequestsController : ControllerBase
                 paymentMode = parsedMode;
             }
 
-            appointment = new Appointment
+            var timestampTicks = DateTime.UtcNow.Ticks;
+            for (int i = 0; i < sessionSlots.Count; i++)
             {
-                Id = $"apt_{DateTime.UtcNow.Ticks % 1000000}",
-                RequestId = newRequest.Id,
-                Request = newRequest,
-                PatientId = patient.Id,
-                Patient = patient,
-                TherapistId = therapist.Id,
-                Therapist = therapist,
-                Status = AppointmentStatus.ASSIGNED,
-                ScheduledStart = startTime,
-                ScheduledEnd = endTime,
-                ArrivalOtp = Random.Shared.Next(1000, 9999).ToString(),
-                CompletionOtp = Random.Shared.Next(1000, 9999).ToString(),
-                BaseFee = fee.BaseFee,
-                DistanceTierFee = fee.DistanceTierFee,
-                UrgentFee = fee.UrgentFee,
-                PlatformFee = fee.PlatformFee,
-                Tax = fee.Tax,
-                TotalFee = fee.TotalFee,
-                PaymentMode = paymentMode,
-                PaymentStatus = PaymentStatus.PENDING,
-                ClinicalNotes = $"Direct intake & dispatch: {newRequest.ChiefComplaint}",
-                CreatedAt = DateTime.UtcNow
-            };
+                var slot = sessionSlots[i];
+                var appointment = new Appointment
+                {
+                    Id = totalSessions == 1 ? $"apt_{timestampTicks % 1000000}" : $"apt_{timestampTicks % 1000000}_{slot.Index}",
+                    RequestId = newRequest.Id,
+                    Request = newRequest,
+                    PatientId = patient.Id,
+                    Patient = patient,
+                    TherapistId = therapist.Id,
+                    Therapist = therapist,
+                    Status = AppointmentStatus.ASSIGNED,
+                    ScheduledStart = slot.Start,
+                    ScheduledEnd = slot.End,
+                    ArrivalOtp = Random.Shared.Next(1000, 9999).ToString(),
+                    CompletionOtp = Random.Shared.Next(1000, 9999).ToString(),
+                    BaseFee = fee.BaseFee,
+                    DistanceTierFee = fee.DistanceTierFee,
+                    UrgentFee = fee.UrgentFee,
+                    PlatformFee = fee.PlatformFee,
+                    Tax = fee.Tax,
+                    TotalFee = fee.TotalFee,
+                    PaymentMode = paymentMode,
+                    PaymentStatus = PaymentStatus.PENDING,
+                    SessionIndex = slot.Index,
+                    TotalSessions = totalSessions,
+                    PackageName = finalPackageName,
+                    OfflineConsultationNotes = dto.OfflineConsultationNotes,
+                    ClinicalNotes = totalSessions == 1
+                        ? $"Direct intake & dispatch: {newRequest.ChiefComplaint}"
+                        : $"[Session {slot.Index} of {totalSessions} - {finalPackageName}] Offline consultation: {dto.OfflineConsultationNotes ?? newRequest.ChiefComplaint}",
+                    CreatedAt = DateTime.UtcNow.AddMilliseconds(i)
+                };
 
-            _context.Appointments.Add(appointment);
+                createdAppointments.Add(appointment);
+                _context.Appointments.Add(appointment);
+            }
         }
 
         await _context.SaveChangesAsync();
 
-        _logger.LogInformation("New service request created: {RequestId} for patient {PatientId}", newRequest.Id, patient.Id);
+        _logger.LogInformation("New service request created: {RequestId} for patient {PatientId} (Care plan: {Sessions} sessions)", 
+            newRequest.Id, patient.Id, totalSessions);
 
         // Real-Time SignalR Broadcasts
         await _hubContext.Clients.Group("dispatch_desk").SendAsync("ReceiveNewRequest", newRequest);
 
-        if (appointment != null && therapist != null)
+        foreach (var apt in createdAppointments)
         {
-            await _hubContext.Clients.Group("dispatch_desk").SendAsync("ReceiveAppointmentAssigned", appointment);
-            await _hubContext.Clients.Group($"patient_{patient.Id}").SendAsync("ReceiveAppointmentAssigned", appointment);
-            await _hubContext.Clients.Group($"clinician_{therapist.Id}").SendAsync("ReceiveAppointmentAssigned", appointment);
+            await _hubContext.Clients.Group("dispatch_desk").SendAsync("ReceiveAppointmentAssigned", apt);
+            await _hubContext.Clients.Group($"patient_{patient.Id}").SendAsync("ReceiveAppointmentAssigned", apt);
+            if (therapist != null)
+            {
+                await _hubContext.Clients.Group($"clinician_{therapist.Id}").SendAsync("ReceiveAppointmentAssigned", apt);
+            }
         }
 
         var therapistDisplayName = therapist != null
@@ -280,15 +328,26 @@ public class RequestsController : ControllerBase
             : "";
 
         var message = therapist != null
-            ? $"Patient '{patient.FullName}' registered and {therapistDisplayName} dispatched for {startTime:MMM dd, yyyy hh:mm tt}!"
-            : $"New patient '{patient.FullName}' registered and triage request #{newRequest.Id} created!";
+            ? (totalSessions == 1
+                ? $"Patient '{patient.FullName}' registered and {therapistDisplayName} dispatched for {createdAppointments[0].ScheduledStart:MMM dd, yyyy hh:mm tt}!"
+                : $"Patient '{patient.FullName}' registered & {totalSessions}-Session Care Plan ({finalPackageName}) scheduled with {therapistDisplayName}!")
+            : (totalSessions == 1
+                ? $"New patient '{patient.FullName}' registered and triage request #{newRequest.Id} created!"
+                : $"New patient '{patient.FullName}' registered and {totalSessions}-Session Care Plan saved to Pending Triage!");
+
+        var totalPackageAmount = createdAppointments.Sum(a => a.TotalFee);
 
         return Ok(new
         {
             success = true,
             message,
             request = newRequest,
-            appointment,
+            totalSessions,
+            packageName = finalPackageName,
+            discountPercent = discountPct,
+            totalPackageAmount,
+            appointment = createdAppointments.FirstOrDefault(),
+            appointments = createdAppointments,
             patient = new
             {
                 patient.Id,

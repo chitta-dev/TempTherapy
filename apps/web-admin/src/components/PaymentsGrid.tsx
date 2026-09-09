@@ -464,6 +464,18 @@ export const PaymentsGrid: React.FC<PaymentsGridProps> = ({
                         <span className="inline-block px-2.5 py-1 rounded-full text-[11px] font-bold bg-teal-50 text-teal-800 border border-teal-200">
                           {categoryName}
                         </span>
+                        {apt.totalSessions > 1 && (
+                          <div className="mt-1 flex flex-wrap items-center gap-1">
+                            <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-black bg-purple-50 text-purple-700 border border-purple-200">
+                              Session {apt.sessionIndex || 1}/{apt.totalSessions}
+                            </span>
+                            {apt.packageName && (
+                              <span className="text-[10px] text-slate-500 font-semibold truncate max-w-[130px]">
+                                {apt.packageName}
+                              </span>
+                            )}
+                          </div>
+                        )}
                       </td>
                       <td className="p-4">
                         <span className="inline-flex items-center font-semibold text-slate-700 bg-slate-100 px-2 py-0.5 rounded text-[11px]">

@@ -19,14 +19,36 @@ public record CreateServiceRequestDto(
     string? PatientEmail = null,
     string? TherapistId = null,
     DateTime? ScheduledStart = null,
-    string? PaymentMode = null
+    string? PaymentMode = null,
+    int? TotalSessions = null,
+    string? Frequency = null,
+    string? OfflineConsultationNotes = null,
+    string? PackageName = null,
+    List<DateTime>? CustomSessionDates = null
 );
 
 public record AssignAppointmentDto(
     string RequestId,
     string TherapistId,
     DateTime? ScheduledStart,
-    string? PaymentMode
+    string? PaymentMode,
+    int? TotalSessions = null,
+    string? Frequency = null,
+    string? OfflineConsultationNotes = null,
+    string? PackageName = null,
+    List<DateTime>? CustomSessionDates = null
+);
+
+public record BatchScheduleDto(
+    string RequestId,
+    string TherapistId,
+    int TotalSessions,
+    string? Frequency,
+    DateTime? ScheduledStart,
+    string? PaymentMode,
+    string? OfflineConsultationNotes,
+    string? PackageName,
+    List<DateTime>? CustomSessionDates = null
 );
 
 public record UpdateVisitStatusDto(

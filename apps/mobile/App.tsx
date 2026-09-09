@@ -498,7 +498,7 @@ export default function App() {
 
     connection.on('ReceiveAppointmentAssigned', (apt: any) => {
       refreshActiveData();
-      showToast('SUCCESS', '⚡ Clinician Dispatched!', 'Dr. Sarah Jenkins has been assigned to your home visit.');
+      showToast('SUCCESS', '⚡ Therapist Dispatched!', 'Dr. Sarah Jenkins has been assigned to your home visit.');
       setActiveTab('status');
     });
 
@@ -553,7 +553,7 @@ export default function App() {
     if (val <= 3) return { text: 'Mild Discomfort • Noticeable but daily routine unaffected', color: '#0d9488' };
     if (val <= 6) return { text: 'Moderate Pain • Restricts bending, sitting & movement', color: '#d97706' };
     if (val <= 8) return { text: 'Severe Pain • Significant limitation, prompt care advised', color: '#ea580c' };
-    return { text: 'Acute / Extreme Pain • Urgent clinician visit recommended', color: '#dc2626' };
+    return { text: 'Acute / Extreme Pain • Urgent therapist visit recommended', color: '#dc2626' };
   };
 
   // Toggle condition in new registration form
@@ -1124,7 +1124,7 @@ export default function App() {
                 setActiveTab('status');
               }}
             >
-              <Text style={styles.modalPrimaryBtnText}>Track Clinician Live Status →</Text>
+              <Text style={styles.modalPrimaryBtnText}>Track Therapist Live Status →</Text>
             </TouchableOpacity>
 
             <TouchableOpacity 
@@ -1148,7 +1148,7 @@ export default function App() {
             </View>
 
             <Text style={styles.modalHeadline}>
-              {commModal.mode === 'CALL' ? 'Secure Clinical Call' : 'Direct Clinician Chat'}
+              {commModal.mode === 'CALL' ? 'Secure Clinical Call' : 'Direct Therapist Chat'}
             </Text>
             <Text style={styles.modalDescription}>
               {commModal.mode === 'CALL' 
@@ -1162,7 +1162,7 @@ export default function App() {
               </View>
               <View style={{ flex: 1, marginLeft: 10 }}>
                 <Text style={styles.commName}>{commModal.name}</Text>
-                <Text style={styles.commPhone}>{commModal.phone} • Verified Clinician</Text>
+                <Text style={styles.commPhone}>{commModal.phone} • Verified Therapist</Text>
               </View>
             </View>
 
@@ -1172,7 +1172,7 @@ export default function App() {
                 showToast(
                   'SUCCESS', 
                   commModal.mode === 'CALL' ? 'Call Connected' : 'Message Sent', 
-                  commModal.mode === 'CALL' ? 'Dialing secure line to Dr. Sarah Jenkins...' : 'Clinician has received your message.'
+                  commModal.mode === 'CALL' ? 'Dialing secure line to Dr. Sarah Jenkins...' : 'Therapist has received your message.'
                 );
                 setCommModal({ visible: false, mode: 'CALL', name: '', phone: '' });
               }}
@@ -2124,7 +2124,7 @@ export default function App() {
                         {activeAppointment?.therapist?.user?.fullName || 'Dr. Sarah Jenkins, PT, DPT'}
                       </Text>
                       <Text style={styles.clinicianMeta}>
-                        Senior Clinician • 7 yrs experience • ★ 4.9 (128 visits)
+                        Senior Therapist • 7 yrs experience • ★ 4.9 (128 visits)
                       </Text>
                       <Text style={styles.clinicianLicense}>
                         License: PT-IND-84920 • Orthopedic Specialist
@@ -2143,7 +2143,7 @@ export default function App() {
                         phone: '+91 98765 00001'
                       })}
                     >
-                      <Text style={styles.clinicianActionText}>📞 Call Clinician</Text>
+                      <Text style={styles.clinicianActionText}>📞 Call Therapist</Text>
                     </TouchableOpacity>
                     <TouchableOpacity 
                       style={styles.clinicianActionBtn}
@@ -2176,7 +2176,7 @@ export default function App() {
                       </Text>
                       <View style={{ flex: 1 }}>
                         <Text style={[styles.timelineTitle, (ptStatus === 'EN_ROUTE' || ptStatus === 'ARRIVED') && styles.timelineActive]}>
-                          2. Clinician En Route
+                          2. Therapist En Route
                         </Text>
                         <Text style={styles.timelineSub}>
                           {ptStatus === 'EN_ROUTE' ? '⚡ Traveling via EV Scooter • ETA ~14 mins' : 'Transit will start 30 mins before visit'}
@@ -2192,7 +2192,7 @@ export default function App() {
                         <Text style={[styles.timelineTitle, ptStatus === 'ARRIVED' && styles.timelineActive]}>
                           3. Arrived at Your Door
                         </Text>
-                        <Text style={styles.timelineSub}>Please buzz clinician into building</Text>
+                        <Text style={styles.timelineSub}>Please buzz therapist into building</Text>
                       </View>
                     </View>
 
@@ -2278,7 +2278,7 @@ export default function App() {
                         </Text>
                       </View>
                       <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
-                        <Text style={{ fontSize: 13, color: '#64748b' }}>Attending Clinician:</Text>
+                        <Text style={{ fontSize: 13, color: '#64748b' }}>Attending Therapist:</Text>
                         <Text style={{ fontSize: 13, fontWeight: '600', color: '#0f172a' }}>
                           {lastCompletedAppointment?.therapist?.user?.fullName || 'Dr. Sarah Jenkins, PT, DPT'}
                         </Text>
@@ -2329,7 +2329,7 @@ export default function App() {
                             </Text>
                           </View>
                           <Text style={{ fontSize: 12, color: '#64748b', marginTop: 4 }}>
-                            Clinician: {apt.therapist?.user?.fullName || 'Dr. Sarah Jenkins'} • Completed
+                            Therapist: {apt.therapist?.user?.fullName || 'Dr. Sarah Jenkins'} • Completed
                           </Text>
                         </View>
                       ))}
@@ -2344,7 +2344,7 @@ export default function App() {
                     No Active Visits In Progress
                   </Text>
                   <Text style={{ fontSize: 14, color: '#64748b', textAlign: 'center', marginTop: 6, lineHeight: 20 }}>
-                    Book an in-home physiotherapy session today. A certified clinician will arrive at your doorstep equipped with clinical modalities.
+                    Book an in-home physiotherapy session today. A certified therapist will arrive at your doorstep equipped with clinical modalities.
                   </Text>
                   <TouchableOpacity 
                     style={[styles.authPrimaryBtn, { marginTop: 20, width: '100%', backgroundColor: '#0d9488' }]}

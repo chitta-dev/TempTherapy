@@ -52,5 +52,15 @@ public class Appointment
     [MaxLength(1000)]
     public string? ClinicalNotes { get; set; }
 
+    // Multi-Session Care Plan Tracking
+    public int SessionIndex { get; set; } = 1;
+    public int TotalSessions { get; set; } = 1;
+
+    [MaxLength(150)]
+    public string? PackageName { get; set; }
+
+    [MaxLength(1000)]
+    public string? OfflineConsultationNotes { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }

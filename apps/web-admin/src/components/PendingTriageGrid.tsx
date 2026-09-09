@@ -22,18 +22,16 @@ export interface PendingTriageGridProps {
   requests: ServiceRequest[];
   categories: CategoryItem[];
   onRefresh: () => void;
-  onDispatchTherapist?: (request: ServiceRequest) => void;
-  onDispatchClinician?: (request: ServiceRequest) => void;
+  onDispatchTherapist: (request: ServiceRequest) => void;
 }
 
 export const PendingTriageGrid: React.FC<PendingTriageGridProps> = ({
   requests,
   categories,
   onRefresh,
-  onDispatchTherapist,
-  onDispatchClinician
+  onDispatchTherapist
 }) => {
-  const handleDispatch = onDispatchTherapist || onDispatchClinician || (() => {});
+  const handleDispatch = onDispatchTherapist;
   // Filter States
   const [searchQuery, setSearchQuery] = useState('');
   const [urgencyFilter, setUrgencyFilter] = useState('ALL');
@@ -387,6 +385,13 @@ export const PendingTriageGrid: React.FC<PendingTriageGridProps> = ({
                           <span className="inline-block px-2.5 py-1 rounded-full text-[11px] font-bold bg-teal-50 text-teal-800 border border-teal-200">
                             {categoryName}
                           </span>
+                          {(req as any).totalSessions && (req as any).totalSessions > 1 && (
+                            <div className="mt-1">
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                                📅 {(req as any).totalSessions} Sessions ({(req as any).packageName || 'Care Plan'})
+                              </span>
+                            </div>
+                          )}
                         </td>
                         <td className="p-4">
                           {req.urgency === 'URGENT' ? (
@@ -418,7 +423,7 @@ export const PendingTriageGrid: React.FC<PendingTriageGridProps> = ({
                             onClick={() => handleDispatch(req)}
                             className="bg-teal-600 hover:bg-teal-700 active:bg-teal-800 text-white px-3.5 py-1.5 rounded-xl text-xs font-bold transition shadow-xs inline-flex items-center space-x-1"
                           >
-                            <span>Dispatch Therapist</span>
+                            <span>{(req as any).totalSessions > 1 ? `Schedule Care Plan (${(req as any).totalSessions} Sessions)` : 'Dispatch Therapist'}</span>
                             <ArrowRight className="w-3.5 h-3.5" />
                           </button>
                         </td>
@@ -461,13 +466,18 @@ export const PendingTriageGrid: React.FC<PendingTriageGridProps> = ({
                 <div key={req.id} className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-xs hover:shadow-md hover:border-teal-400 transition-all duration-200 space-y-4">
                   <div className="flex items-start justify-between">
                     <div>
-                      <div className="flex items-center space-x-2">
+                      <div className="flex flex-wrap items-center gap-1.5">
                         <span className="inline-block px-3 py-1 rounded-full text-xs font-bold bg-teal-50 text-teal-800 border border-teal-200/80">
                           {categoryName}
                         </span>
                         {req.urgency === 'URGENT' && (
                           <span className="inline-block px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-rose-50 text-rose-700 border border-rose-200">
                             🚨 URGENT
+                          </span>
+                        )}
+                        {(req as any).totalSessions > 1 && (
+                          <span className="inline-block px-2.5 py-0.5 rounded-full text-[10px] font-black bg-purple-50 text-purple-700 border border-purple-200">
+                            📅 {(req as any).totalSessions} Sessions {(req as any).packageName ? `(${(req as any).packageName})` : ''}
                           </span>
                         )}
                       </div>
@@ -498,18 +508,27 @@ export const PendingTriageGrid: React.FC<PendingTriageGridProps> = ({
                     <p className="text-slate-500 italic mt-1 border-t border-slate-200/50 pt-1.5">
                       "{condition}"
                     </p>
+                    {(req as any).offlineConsultationNotes && (
+                      <p className="text-[11px] bg-amber-50 text-amber-900 p-2 rounded-lg border border-amber-200/70 flex items-start space-x-1.5 font-medium mt-1">
+                        <Phone className="w-3.5 h-3.5 text-amber-600 shrink-0 mt-0.5" />
+                        <span><strong className="font-bold">Offline Intake Note:</strong> {(req as any).offlineConsultationNotes}</span>
+                      </p>
+                    )}
                   </div>
 
                   <div className="flex items-center justify-between pt-2 border-t border-slate-100">
                     <div>
-                      <span className="text-[10px] uppercase tracking-wider text-slate-400 font-bold block">Base Session Fee</span>
+                      <span className="text-[10px] uppercase tracking-wider text-slate-400 font-bold block">
+                        {(req as any).totalSessions > 1 ? `Plan Fee (${(req as any).totalSessions} Sessions)` : 'Base Session Fee'}
+                      </span>
                       <span className="text-base font-black text-teal-800">₹{price}.00</span>
                     </div>
                     <button
                       onClick={() => handleDispatch(req)}
                       className="bg-teal-600 hover:bg-teal-700 active:bg-teal-800 text-white px-4 py-2 rounded-xl text-xs font-bold transition shadow-xs flex items-center space-x-1.5"
                     >
-                      <span>Dispatch Therapist ➔</span>
+                      <span>{(req as any).totalSessions > 1 ? `Schedule Care Plan (${(req as any).totalSessions} Sessions)` : 'Dispatch Therapist'}</span>
+                      <ArrowRight className="w-3.5 h-3.5" />
                     </button>
                   </div>
                 </div>

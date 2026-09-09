@@ -187,7 +187,13 @@ export default function App() {
   // Modal State for Dispatch / Assignment
   const [selectedRequest, setSelectedRequest] = useState<ServiceRequest | null>(null);
   const [selectedTherapistId, setSelectedTherapistId] = useState<string>('');
+  const [dispatchDate, setDispatchDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [dispatchTime, setDispatchTime] = useState<string>('10:00');
   const [paymentMode, setPaymentMode] = useState<'CASH_ON_SERVICE' | 'ONLINE_CARD'>('CASH_ON_SERVICE');
+  const [dispatchSessionCount, setDispatchSessionCount] = useState<number>(1);
+  const [dispatchFrequency, setDispatchFrequency] = useState<'ALTERNATE_DAYS' | 'DAILY' | 'WEEKLY'>('ALTERNATE_DAYS');
+  const [dispatchOfflineNotes, setDispatchOfflineNotes] = useState<string>('');
+  const [dispatchPackageName, setDispatchPackageName] = useState<string>('');
 
   // New Patient Request Form State
   const [newPatientName, setNewPatientName] = useState('');
@@ -199,6 +205,208 @@ export default function App() {
   const [newSymptoms, setNewSymptoms] = useState('');
   const [newTimeWindow, setNewTimeWindow] = useState('Morning (9 AM - 12 PM)');
   const [isUrgent, setIsUrgent] = useState(false);
+  const [oneShotDispatch, setOneShotDispatch] = useState(true);
+  const [oneShotDate, setOneShotDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [oneShotTime, setOneShotTime] = useState<string>('10:00');
+  const [oneShotTherapistId, setOneShotTherapistId] = useState<string>('');
+  const [oneShotPaymentMode, setOneShotPaymentMode] = useState<'CASH' | 'CARD' | 'UPI'>('CASH');
+  const [intakeSessionCount, setIntakeSessionCount] = useState<number>(1);
+  const [intakeFrequency, setIntakeFrequency] = useState<'ALTERNATE_DAYS' | 'DAILY' | 'WEEKLY'>('ALTERNATE_DAYS');
+  const [intakeOfflineNotes, setIntakeOfflineNotes] = useState<string>('');
+  const [intakePackageName, setIntakePackageName] = useState<string>('');
+
+  // Helper: Live Therapist Availability Validation against Schedule
+  const checkTherapistAvailability = (
+    therapistId: string,
+    dateStr: string,
+    timeStr: string,
+    durationMinutes = 60
+  ) => {
+    const pt = therapists.find(t => t.id === therapistId);
+    if (!pt) {
+      return { available: false, status: 'NOT_FOUND', label: 'Unknown', reason: 'Therapist record not found' };
+    }
+    if (pt.isAvailable === false) {
+      return { available: false, status: 'OFF_DUTY', label: 'Off-Duty', reason: 'Currently off-duty' };
+    }
+    if (!dateStr || !timeStr) {
+      return { available: true, status: 'UNKNOWN', label: 'Select date & time', reason: '' };
+    }
+
+    const start = new Date(`${dateStr}T${timeStr}:00`);
+    if (isNaN(start.getTime())) {
+      return { available: true, status: 'UNKNOWN', label: 'Invalid date/time', reason: '' };
+    }
+    const end = new Date(start.getTime() + durationMinutes * 60000);
+
+    // Look for overlapping appointments
+    const conflict = appointments.find(apt => {
+      const aptTherapistId = (apt as any).therapistId || (apt as any).therapist?.id;
+      if (aptTherapistId !== therapistId) return false;
+      if (apt.status === 'CANCELLED' || apt.status === 'COMPLETED') return false;
+      if (!apt.scheduledStart) return false;
+
+      const aptStart = new Date(apt.scheduledStart);
+      const aptEnd = apt.scheduledEnd
+        ? new Date(apt.scheduledEnd)
+        : new Date(aptStart.getTime() + 60 * 60000);
+
+      return start < aptEnd && end > aptStart;
+    });
+
+    if (conflict) {
+      const formatTimeSlot = (d: Date) => d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      return {
+        available: false,
+        status: 'BOOKED',
+        label: 'Booked',
+        reason: `Busy on Apt #${conflict.id.slice(-4)} (${formatTimeSlot(new Date(conflict.scheduledStart))} - ${conflict.scheduledEnd ? formatTimeSlot(new Date(conflict.scheduledEnd)) : 'end'})`
+      };
+    }
+
+    return { available: true, status: 'AVAILABLE', label: 'Available', reason: 'Ready for slot' };
+  };
+
+  // Helper: Calculate package tier name, discount percentage, and total package amount
+  const calculatePackageDetails = (basePrice: number, sessionCount: number) => {
+    let discountPct = 0;
+    let tierName = 'Single Visit Assessment';
+
+    if (sessionCount >= 20) {
+      discountPct = 25;
+      tierName = 'Full Rehabilitation Pass (20+ Sessions)';
+    } else if (sessionCount >= 10) {
+      discountPct = 18;
+      tierName = 'Comprehensive Recovery Plan (10 Sessions)';
+    } else if (sessionCount >= 5) {
+      discountPct = 10;
+      tierName = 'Starter Rehabilitation Package (5 Sessions)';
+    } else if (sessionCount >= 3) {
+      discountPct = 5;
+      tierName = 'Acute Care Relief Package (3 Sessions)';
+    }
+
+    const discountedBase = discountPct > 0 
+      ? Math.round(basePrice * (1 - discountPct / 100))
+      : basePrice;
+    const totalSubtotal = discountedBase * sessionCount;
+    const discountSavings = (basePrice * sessionCount) - totalSubtotal;
+
+    return {
+      discountPct,
+      tierName,
+      perSessionRate: discountedBase,
+      totalPackageAmount: totalSubtotal,
+      discountSavings
+    };
+  };
+
+  // Helper: Generate date and time slots for all N sessions according to recurrence frequency
+  const generateCarePlanSchedule = (
+    startDateStr: string,
+    timeStr: string,
+    count: number,
+    freq: 'ALTERNATE_DAYS' | 'DAILY' | 'WEEKLY'
+  ) => {
+    const slots: { index: number; dateStr: string; timeStr: string; dateObj: Date }[] = [];
+    if (!startDateStr || !timeStr || count < 1) return slots;
+
+    const base = new Date(`${startDateStr}T${timeStr}:00`);
+    if (isNaN(base.getTime())) return slots;
+
+    for (let i = 0; i < count; i++) {
+      const d = new Date(base.getTime());
+      if (freq === 'DAILY') {
+        d.setDate(d.getDate() + i);
+      } else if (freq === 'WEEKLY') {
+        d.setDate(d.getDate() + i * 7);
+      } else {
+        // ALTERNATE_DAYS (every 2 days)
+        d.setDate(d.getDate() + i * 2);
+      }
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      const dateString = `${y}-${m}-${day}`;
+      slots.push({
+        index: i + 1,
+        dateStr: dateString,
+        timeStr,
+        dateObj: d
+      });
+    }
+    return slots;
+  };
+
+  // Helper: Validate therapist availability across ALL sessions in the care plan
+  const checkTherapistMultiAvailability = (
+    therapistId: string,
+    slots: { index: number; dateStr: string; timeStr: string }[],
+    durationMinutes = 60
+  ) => {
+    const pt = therapists.find(t => t.id === therapistId);
+    if (!pt) {
+      return { available: false, status: 'NOT_FOUND', reason: 'Therapist record not found', conflictingSlots: [] as { index: number; dateStr: string; reason: string }[] };
+    }
+    if (pt.isAvailable === false) {
+      return { available: false, status: 'OFF_DUTY', reason: 'Currently off-duty / unavailable', conflictingSlots: [] as { index: number; dateStr: string; reason: string }[] };
+    }
+
+    const conflictingSlots: { index: number; dateStr: string; reason: string }[] = [];
+
+    slots.forEach(slot => {
+      const avail = checkTherapistAvailability(therapistId, slot.dateStr, slot.timeStr, durationMinutes);
+      if (!avail.available) {
+        conflictingSlots.push({
+          index: slot.index,
+          dateStr: slot.dateStr,
+          reason: avail.reason
+        });
+      }
+    });
+
+    if (conflictingSlots.length > 0) {
+      return {
+        available: false,
+        status: 'BOOKED',
+        reason: `Conflict on Session ${conflictingSlots[0].index} (${conflictingSlots[0].dateStr})`,
+        conflictingSlots
+      };
+    }
+
+    return {
+      available: true,
+      status: 'AVAILABLE',
+      reason: 'Available for all sessions in care plan',
+      conflictingSlots: [] as { index: number; dateStr: string; reason: string }[]
+    };
+  };
+
+  // Helper: Open Dispatch Modal with date/time defaults and offline consultation care plan
+  const handleOpenDispatchModal = (req: ServiceRequest) => {
+    setSelectedRequest(req);
+    const todayStr = new Date().toISOString().split('T')[0];
+    setDispatchDate(todayStr);
+
+    let initialTime = '10:00';
+    const slot = (req.preferredTimeSlot || '').toLowerCase();
+    if (slot.includes('afternoon') || slot.includes('2 pm') || slot.includes('3 pm')) {
+      initialTime = '14:00';
+    } else if (slot.includes('evening') || slot.includes('5 pm') || slot.includes('6 pm')) {
+      initialTime = '17:30';
+    }
+    setDispatchTime(initialTime);
+
+    const initialCount = (req as any).totalSessions && (req as any).totalSessions > 0 ? (req as any).totalSessions : 1;
+    setDispatchSessionCount(initialCount);
+    setDispatchFrequency('ALTERNATE_DAYS');
+    setDispatchOfflineNotes((req as any).offlineConsultationNotes || `Spoke with patient ${(req as any).patient?.fullName || 'patient'} via phone call. Confirmed ${initialCount}-session care plan.`);
+    setDispatchPackageName((req as any).packageName || '');
+
+    const generated = generateCarePlanSchedule(todayStr, initialTime, initialCount, 'ALTERNATE_DAYS');
+    const firstAvail = therapists.find(t => checkTherapistMultiAvailability(t.id, generated).available);
+    setSelectedTherapistId(firstAvail?.id || (therapists[0]?.id || ''));
+  };
 
   // User Management Modals
   const [showCreateUserModal, setShowCreateUserModal] = useState(false);
@@ -404,7 +612,7 @@ export default function App() {
 
       connection.on('ReceiveAppointmentAssigned', (apt: any) => {
         fetchData();
-        showToast(`⚡ Real-time dispatch: Clinician assigned to Apt #${apt.id?.slice(-4)}!`, 'success');
+        showToast(`⚡ Real-time dispatch: Therapist assigned to Apt #${apt.id?.slice(-4)}!`, 'success');
       });
 
       connection.on('ReceiveVisitStatusUpdated', (payload: any) => {
@@ -423,25 +631,51 @@ export default function App() {
     }
   }, [currentUser]);
 
-  // Handle Dispatch / Assignment
+  // Handle Dispatch / Assignment with Care Plan Multi-Session & Conflict Validation
   const handleAssignTherapist = async () => {
-    if (!selectedRequest || !selectedTherapistId) return;
+    if (!selectedRequest) return;
+
+    if (!dispatchDate || !dispatchTime) {
+      showToast('Scheduled visit date and time are mandatory for dispatch.', 'error');
+      return;
+    }
+
+    if (!selectedTherapistId) {
+      showToast('Please select a therapist from the roster to dispatch.', 'error');
+      return;
+    }
+
+    const carePlanSlots = generateCarePlanSchedule(dispatchDate, dispatchTime, dispatchSessionCount, dispatchFrequency);
+    const multiAvail = checkTherapistMultiAvailability(selectedTherapistId, carePlanSlots);
+    if (!multiAvail.available) {
+      showToast(`Cannot dispatch: ${multiAvail.reason}. Please select an available therapist or slot.`, 'error');
+      return;
+    }
+
+    const catPrice = selectedCatObj ? selectedCatObj.basePrice : 850;
+    const pkgDetails = calculatePackageDetails(catPrice, dispatchSessionCount);
+    const resolvedPackageName = dispatchPackageName || pkgDetails.tierName;
 
     try {
-      const res = await fetch(`${API_BASE}/dispatch/assign`, {
+      const scheduledStart = new Date(`${dispatchDate}T${dispatchTime}:00`).toISOString();
+      const res = await fetch(`${API_BASE}/dispatch/batch-schedule`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           requestId: selectedRequest.id,
           therapistId: selectedTherapistId,
-          assignedByUserId: currentUser?.id || 'usr_desk_1',
-          paymentMode
+          totalSessions: dispatchSessionCount,
+          frequency: dispatchFrequency,
+          scheduledStart,
+          paymentMode: paymentMode === 'CASH_ON_SERVICE' ? 'CASH' : 'CARD',
+          offlineConsultationNotes: dispatchOfflineNotes.trim() || 'Offline consultation confirmed with patient.',
+          packageName: resolvedPackageName
         })
       });
       const data = await res.json();
       if (data.success || res.ok) {
         setSelectedRequest(null);
-        showToast('Therapist dispatched and appointment scheduled!', 'success');
+        showToast(data.message || 'Care plan dispatched and appointments scheduled successfully!', 'success');
         fetchData();
         setActiveTab('appointments');
       } else {
@@ -836,15 +1070,40 @@ export default function App() {
   };
 
   // Handle New Patient Request Submission (DeskBoy & Admin)
-  // Registers a new patient user and creates a pending triage request in the queue
+  // Accommodates:
+  // 1. User Creation + Pending Triage (Queue mode)
+  // 2. User Creation + Service Request + Immediate Therapist Dispatch (One-Shot mode)
   const handleCreatePatientRequest = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newPatientName || !newPatientPhone || !newAddress) {
+    if (!newPatientName.trim() || !newPatientPhone.trim() || !newAddress.trim()) {
       showToast('Please fill in required fields (Patient Name, Phone, and Address).', 'error');
       return;
     }
 
+    const currentCat = categoriesList.find(c => c.id === newCategory);
+    const catBasePrice = currentCat ? currentCat.basePrice : 850;
+    const pkg = calculatePackageDetails(catBasePrice, intakeSessionCount);
+    const resolvedPackageName = intakePackageName || pkg.tierName;
+
+    if (oneShotDispatch) {
+      if (!oneShotDate || !oneShotTime) {
+        showToast('Scheduled visit date and time are mandatory for instant care plan dispatch.', 'error');
+        return;
+      }
+      if (!oneShotTherapistId) {
+        showToast('Please select an available therapist from the roster to dispatch.', 'error');
+        return;
+      }
+      const intakeSlots = generateCarePlanSchedule(oneShotDate, oneShotTime, intakeSessionCount, intakeFrequency);
+      const multiAvail = checkTherapistMultiAvailability(oneShotTherapistId, intakeSlots);
+      if (!multiAvail.available) {
+        showToast(`Cannot dispatch: ${multiAvail.reason}. Please select an available time or therapist.`, 'error');
+        return;
+      }
+    }
+
     try {
+      const scheduledStart = oneShotDispatch ? new Date(`${oneShotDate}T${oneShotTime}:00`).toISOString() : undefined;
       const res = await fetch(`${API_BASE}/requests`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -856,8 +1115,16 @@ export default function App() {
           addressLine: newAddress.trim(),
           targetArea: newPainArea || 'Lower Back',
           chiefComplaint: newSymptoms || 'New patient clinical request taken via front desk.',
-          preferredTimeSlot: newTimeWindow || 'Morning (9 AM - 12 PM)',
-          urgency: isUrgent ? 'URGENT' : 'ROUTINE'
+          preferredDate: oneShotDate || 'Today',
+          preferredTimeSlot: oneShotDispatch ? `${oneShotTime} (${newTimeWindow})` : (newTimeWindow || 'Morning (9 AM - 12 PM)'),
+          urgency: isUrgent ? 'URGENT' : 'ROUTINE',
+          therapistId: oneShotDispatch ? oneShotTherapistId : undefined,
+          scheduledStart,
+          paymentMode: oneShotDispatch ? oneShotPaymentMode : undefined,
+          totalSessions: intakeSessionCount,
+          frequency: intakeFrequency,
+          offlineConsultationNotes: intakeOfflineNotes.trim() || (oneShotDispatch ? 'Offline phone consultation confirmed with patient.' : undefined),
+          packageName: resolvedPackageName
         })
       });
       const data = await res.json();
@@ -868,9 +1135,19 @@ export default function App() {
         setNewAddress('');
         setNewSymptoms('');
         setIsUrgent(false);
-        showToast(data.message || `New patient registered and pending triage request created!`, 'success');
-        fetchData();
-        setActiveTab('queue');
+        setOneShotTherapistId('');
+        setIntakeSessionCount(1);
+        setIntakeOfflineNotes('');
+
+        if (oneShotDispatch) {
+          showToast(data.message || 'Patient registered and care plan dispatched in one shot!', 'success');
+          fetchData();
+          setActiveTab('appointments');
+        } else {
+          showToast(data.message || 'New patient registered and care plan saved to Pending Triage!', 'success');
+          fetchData();
+          setActiveTab('queue');
+        }
       } else {
         showToast(data.message || 'Failed to create patient request.', 'error');
       }
@@ -1239,7 +1516,7 @@ export default function App() {
             </h3>
             <p className="text-xs text-slate-500">
               {isTherapist ? (
-                <>Clinician account created for <span className="font-bold text-slate-800">Dr. {createdActivationInfo.name}</span></>
+                <>Therapist account created for <span className="font-bold text-slate-800">Dr. {createdActivationInfo.name}</span></>
               ) : isPatient ? (
                 <>Patient profile registered for <span className="font-bold text-slate-800">{createdActivationInfo.name}</span></>
               ) : (
@@ -1252,7 +1529,7 @@ export default function App() {
           {isTherapist ? (
             <div className="p-3.5 bg-emerald-50/70 rounded-xl border border-emerald-200/80 text-xs space-y-2">
               <div className="flex justify-between text-slate-600">
-                <span className="font-bold">Clinician Email:</span>
+                <span className="font-bold">Therapist Email:</span>
                 <span className="font-mono text-emerald-800 font-semibold">{createdActivationInfo.email || '—'}</span>
               </div>
               <div className="flex justify-between text-slate-600">
@@ -1665,7 +1942,7 @@ export default function App() {
             requests={requests}
             categories={categoriesList}
             onRefresh={fetchData}
-            onDispatchClinician={(req) => setSelectedRequest(req)}
+            onDispatchTherapist={handleOpenDispatchModal}
           />
         )}
 
@@ -1725,115 +2002,526 @@ export default function App() {
           <div className="max-w-2xl mx-auto bg-white rounded-3xl border border-slate-200/80 p-8 shadow-xs space-y-6">
             <div>
               <h2 className="text-xl font-black text-slate-900 tracking-tight">New Patient Request</h2>
-              <p className="text-xs text-slate-500 mt-0.5">Register a new patient and instantly create a pending triage request for clinical dispatch.</p>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Register a new patient and instantly dispatch an available therapist in one shot, or queue for clinical triage review.
+              </p>
             </div>
 
-            <form onSubmit={handleCreatePatientRequest} className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Patient Full Name *</label>
-                  <input
-                    type="text"
-                    value={newPatientName}
-                    onChange={e => setNewPatientName(e.target.value)}
-                    placeholder="e.g. Rajesh Sharma"
-                    required
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500"
-                  />
+            {/* WORKFLOW MODE SELECTOR: ONE-SHOT DISPATCH VS TRIAGE QUEUE */}
+            <div className="grid grid-cols-2 p-1.5 bg-slate-100 rounded-2xl border border-slate-200/80 gap-1.5">
+              <button
+                type="button"
+                onClick={() => setOneShotDispatch(true)}
+                className={`py-2.5 px-3 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 ${
+                  oneShotDispatch
+                    ? 'bg-white text-teal-900 shadow-xs border border-slate-200/80'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
+                }`}
+              >
+                <Zap className="w-4 h-4 text-teal-600" />
+                <span>⚡ Instant One-Shot Dispatch</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setOneShotDispatch(false)}
+                className={`py-2.5 px-3 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 ${
+                  !oneShotDispatch
+                    ? 'bg-white text-teal-900 shadow-xs border border-slate-200/80'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
+                }`}
+              >
+                <Clock className="w-4 h-4 text-amber-600" />
+                <span>📋 Save to Pending Triage</span>
+              </button>
+            </div>
+
+            <form onSubmit={handleCreatePatientRequest} className="space-y-5">
+              {/* PATIENT PROFILE INFORMATION */}
+              <div className="space-y-3">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">1. Patient Information</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Patient Full Name *</label>
+                    <input
+                      type="text"
+                      value={newPatientName}
+                      onChange={e => setNewPatientName(e.target.value)}
+                      placeholder="e.g. Rajesh Sharma"
+                      required
+                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Phone Number *</label>
+                    <input
+                      type="text"
+                      value={newPatientPhone}
+                      onChange={e => setNewPatientPhone(e.target.value)}
+                      placeholder="+91 98765 43210"
+                      required
+                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                    />
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Phone Number *</label>
-                  <input
-                    type="text"
-                    value={newPatientPhone}
-                    onChange={e => setNewPatientPhone(e.target.value)}
-                    placeholder="+91 98765 43210"
-                    required
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500"
-                  />
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Email Address (Optional)</label>
+                    <input
+                      type="email"
+                      value={newPatientEmail}
+                      onChange={e => setNewPatientEmail(e.target.value)}
+                      placeholder="rajesh.sharma@example.com"
+                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Home Address *</label>
+                    <input
+                      type="text"
+                      value={newAddress}
+                      onChange={e => setNewAddress(e.target.value)}
+                      placeholder="Indiranagar 100ft Road, Bengaluru"
+                      required
+                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                    />
+                  </div>
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {/* CLINICAL REQUEST SPECIFICATIONS */}
+              <div className="space-y-3 pt-2 border-t border-slate-100">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">2. Clinical Care Details</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Therapy Specialty</label>
+                    <select
+                      value={newCategory}
+                      onChange={e => setNewCategory(e.target.value)}
+                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500 font-medium"
+                    >
+                      {categoriesList.map(cat => (
+                        <option key={cat.id} value={cat.id}>
+                          {cat.name} (₹{cat.basePrice})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Target Pain / Treatment Area</label>
+                    <input
+                      type="text"
+                      value={newPainArea}
+                      onChange={e => setNewPainArea(e.target.value)}
+                      placeholder="e.g. Lumbar Spine / Right Knee"
+                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                    />
+                  </div>
+                </div>
+
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Email Address (Optional)</label>
-                  <input
-                    type="email"
-                    value={newPatientEmail}
-                    onChange={e => setNewPatientEmail(e.target.value)}
-                    placeholder="rajesh.sharma@example.com"
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Chief Complaint / Restricting Symptoms</label>
+                  <textarea
+                    value={newSymptoms}
+                    onChange={e => setNewSymptoms(e.target.value)}
+                    placeholder="e.g. Acute lower back spasm, restricted gait, stiffness after lifting heavy object..."
+                    rows={2}
                     className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500"
                   />
                 </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Home Address *</label>
+
+                {!oneShotDispatch && (
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Preferred Time Window</label>
+                    <input
+                      type="text"
+                      value={newTimeWindow}
+                      onChange={e => setNewTimeWindow(e.target.value)}
+                      placeholder="Tomorrow at 10:30 AM"
+                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                    />
+                  </div>
+                )}
+
+                <div className="flex items-center space-x-2 pt-1">
                   <input
-                    type="text"
-                    value={newAddress}
-                    onChange={e => setNewAddress(e.target.value)}
-                    placeholder="Indiranagar 100ft Road, Bengaluru"
-                    required
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                    type="checkbox"
+                    id="urgentCheck"
+                    checked={isUrgent}
+                    onChange={e => setIsUrgent(e.target.checked)}
+                    className="rounded text-teal-600 focus:ring-teal-500"
+                  />
+                  <label htmlFor="urgentCheck" className="text-xs font-bold text-rose-700 cursor-pointer">
+                    Mark as Urgent Priority (+₹200 express dispatch)
+                  </label>
+                </div>
+              </div>
+
+              {/* SECTION 3: OFFLINE CONSULTATION & MULTI-SESSION CARE PLAN */}
+              <div className="space-y-4 pt-3 border-t border-slate-100">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                    <Phone className="w-3.5 h-3.5 text-teal-600" />
+                    3. Offline Consultation & Multi-Session Care Plan
+                  </h3>
+                  <span className="text-[10px] font-bold text-teal-800 bg-teal-50 border border-teal-200 px-2 py-0.5 rounded-full flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-teal-600"></span>
+                    Patient Call Confirmed
+                  </span>
+                </div>
+
+                {/* OFFLINE PHONE CONSULTATION NOTES */}
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                    Offline Phone Consultation Notes
+                  </label>
+                  <textarea
+                    value={intakeOfflineNotes}
+                    onChange={e => setIntakeOfflineNotes(e.target.value)}
+                    placeholder="e.g. Spoke with patient on phone. Confirmed 5 sessions for post-ACL surgery rehab, alternate days at 10 AM. Patient has staircase access."
+                    rows={2}
+                    className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500"
                   />
                 </div>
-              </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Therapy Specialty</label>
-                  <select
-                    value={newCategory}
-                    onChange={e => setNewCategory(e.target.value)}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500"
-                  >
-                    {categoriesList.map(cat => (
-                      <option key={cat.id} value={cat.id}>
-                        {cat.name} (₹{cat.basePrice})
-                      </option>
-                    ))}
-                  </select>
+                {/* SESSION COUNT SELECTOR */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="block text-[11px] font-bold text-slate-700">
+                      Confirmed Number of Sessions
+                    </label>
+                    <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-md">
+                      {calculatePackageDetails((categoriesList.find(c => c.id === newCategory)?.basePrice || 850) + (isUrgent ? 200 : 0), intakeSessionCount).tierName}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
+                    {[
+                      { count: 1, label: '1 Session', sub: 'Single Visit', discount: '0%' },
+                      { count: 3, label: '3 Sessions', sub: 'Acute Relief', discount: '5% Off' },
+                      { count: 5, label: '5 Sessions', sub: 'Starter Plan', discount: '10% Off' },
+                      { count: 10, label: '10 Sessions', sub: 'Recovery', discount: '18% Off' },
+                      { count: 20, label: '20 Sessions', sub: 'Full Rehab', discount: '25% Off' }
+                    ].map(plan => {
+                      const isSelected = intakeSessionCount === plan.count;
+                      return (
+                        <button
+                          key={plan.count}
+                          type="button"
+                          onClick={() => setIntakeSessionCount(plan.count)}
+                          className={`p-2.5 rounded-xl border text-center transition flex flex-col items-center justify-center ${
+                            isSelected
+                              ? 'border-teal-600 bg-teal-50 ring-2 ring-teal-500/30 text-teal-900 shadow-xs'
+                              : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-700'
+                          }`}
+                        >
+                          <span className="text-xs font-black">{plan.label}</span>
+                          <span className="text-[10px] font-semibold text-slate-500">{plan.sub}</span>
+                          <span className={`text-[9px] font-bold mt-1 px-1.5 py-0.2 rounded ${isSelected ? 'bg-teal-200 text-teal-800' : 'bg-slate-100 text-slate-600'}`}>
+                            {plan.discount}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* CUSTOM SESSION COUNT INPUT */}
+                  <div className="flex items-center gap-3 pt-1">
+                    <span className="text-[11px] font-bold text-slate-600 whitespace-nowrap">Custom Sessions:</span>
+                    <input
+                      type="number"
+                      min={1}
+                      max={30}
+                      value={intakeSessionCount}
+                      onChange={e => setIntakeSessionCount(Math.max(1, Math.min(30, parseInt(e.target.value) || 1)))}
+                      className="w-20 px-2.5 py-1.5 bg-slate-50 border border-slate-300 rounded-lg text-xs font-bold text-slate-800 text-center"
+                    />
+                    <span className="text-[11px] text-slate-500">
+                      ({intakeSessionCount} session{intakeSessionCount > 1 ? 's' : ''} planned)
+                    </span>
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Preferred Time Window</label>
-                  <input
-                    type="text"
-                    value={newTimeWindow}
-                    onChange={e => setNewTimeWindow(e.target.value)}
-                    placeholder="Tomorrow at 10:30 AM"
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500"
-                  />
-                </div>
+
+                {/* RECURRENCE FREQUENCY */}
+                {intakeSessionCount > 1 && (
+                  <div className="space-y-1.5">
+                    <label className="block text-[11px] font-bold text-slate-700">Recurrence Frequency</label>
+                    <div className="grid grid-cols-3 gap-2">
+                      {[
+                        { key: 'ALTERNATE_DAYS', label: 'Alternate Days', desc: 'Every 2 days (Recommended)' },
+                        { key: 'DAILY', label: 'Daily', desc: 'Consecutive days' },
+                        { key: 'WEEKLY', label: 'Weekly', desc: 'Once a week' }
+                      ].map(freq => {
+                        const isSelected = intakeFrequency === freq.key;
+                        return (
+                          <button
+                            key={freq.key}
+                            type="button"
+                            onClick={() => setIntakeFrequency(freq.key as any)}
+                            className={`p-2 rounded-xl border text-left transition ${
+                              isSelected
+                                ? 'border-teal-500 bg-teal-50/70 text-teal-900 font-bold shadow-xs'
+                                : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-700'
+                            }`}
+                          >
+                            <p className="text-xs font-bold">{freq.label}</p>
+                            <p className="text-[10px] text-slate-500">{freq.desc}</p>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* ONE-SHOT DISPATCH SECTION (DATE, TIME, THERAPIST AVAILABILITY, PAYMENT) */}
+                {oneShotDispatch ? (
+                  <div className="space-y-4 pt-3 border-t border-teal-100 bg-teal-50/40 p-4 rounded-2xl border">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-xs font-bold uppercase tracking-wider text-teal-900 flex items-center gap-1.5">
+                        <Zap className="w-3.5 h-3.5 text-teal-600" />
+                        First Visit & Clinician Dispatch
+                      </h4>
+                      <span className="text-[10px] font-bold text-teal-700 bg-teal-100 border border-teal-200 px-2 py-0.5 rounded-full">
+                        Live Schedule Validation
+                      </span>
+                    </div>
+
+                    {/* MANDATORY DATE & TIME */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-700 mb-1 flex items-center gap-1">
+                          <Calendar className="w-3.5 h-3.5 text-teal-600" />
+                          First Session Date *
+                        </label>
+                        <input
+                          type="date"
+                          value={oneShotDate}
+                          min={new Date().toISOString().split('T')[0]}
+                          onChange={e => setOneShotDate(e.target.value)}
+                          required
+                          className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-teal-500 focus:outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-700 mb-1 flex items-center gap-1">
+                          <Clock className="w-3.5 h-3.5 text-teal-600" />
+                          Preferred Session Time *
+                        </label>
+                        <input
+                          type="time"
+                          value={oneShotTime}
+                          onChange={e => setOneShotTime(e.target.value)}
+                          required
+                          className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-teal-500 focus:outline-none"
+                        />
+                      </div>
+                    </div>
+
+                    {/* THERAPIST SELECTION ROSTER WITH MULTI-SESSION AVAILABILITY */}
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <label className="block text-[11px] font-bold text-slate-700">
+                          Assign Therapist * (Checking all {intakeSessionCount} session slot{intakeSessionCount > 1 ? 's' : ''})
+                        </label>
+                      </div>
+
+                      <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                        {therapists.map(pt => {
+                          const slots = generateCarePlanSchedule(oneShotDate, oneShotTime, intakeSessionCount, intakeFrequency);
+                          const multiAvail = checkTherapistMultiAvailability(pt.id, slots);
+                          const isSelected = oneShotTherapistId === pt.id;
+                          return (
+                            <label
+                              key={pt.id}
+                              onClick={() => setOneShotTherapistId(pt.id)}
+                              className={`flex items-center justify-between p-3 rounded-xl border text-xs cursor-pointer transition ${
+                                isSelected
+                                  ? 'border-teal-500 bg-white ring-2 ring-teal-500/30 shadow-xs'
+                                  : 'border-slate-200 bg-white/80 hover:bg-white'
+                              }`}
+                            >
+                              <div className="space-y-0.5">
+                                <div className="flex items-center gap-1.5">
+                                  <p className="font-bold text-slate-900">{pt.user?.fullName || 'Therapist'}</p>
+                                  {isSelected && <Check className="w-3.5 h-3.5 text-teal-600 shrink-0" />}
+                                </div>
+                                <p className="text-slate-500 text-[11px]">
+                                  {pt.licenseNumber || 'PT-IND-8941'} • ★ {pt.rating || 4.9} ({pt.reviewCount || 35} visits)
+                                </p>
+                              </div>
+                              <div className="text-right">
+                                {multiAvail.status === 'AVAILABLE' && (
+                                  <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100 border border-emerald-300 px-2.5 py-0.5 rounded-full inline-flex items-center gap-1">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 inline-block"></span>
+                                    {intakeSessionCount > 1 ? `Available (All ${intakeSessionCount})` : 'Available'}
+                                  </span>
+                                )}
+                                {multiAvail.status === 'BOOKED' && (
+                                  <span className="text-[10px] font-bold text-rose-700 bg-rose-100 border border-rose-300 px-2.5 py-0.5 rounded-full inline-flex items-center gap-1" title={multiAvail.reason}>
+                                    <span className="w-1.5 h-1.5 rounded-full bg-rose-600 inline-block"></span>
+                                    Conflict ({multiAvail.conflictingSlots.length} slot{multiAvail.conflictingSlots.length > 1 ? 's' : ''})
+                                  </span>
+                                )}
+                                {multiAvail.status === 'OFF_DUTY' && (
+                                  <span className="text-[10px] font-bold text-amber-700 bg-amber-100 border border-amber-300 px-2.5 py-0.5 rounded-full inline-flex items-center gap-1">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-amber-600 inline-block"></span>
+                                    Off-Duty
+                                  </span>
+                                )}
+                              </div>
+                            </label>
+                          );
+                        })}
+                      </div>
+
+                      {/* Conflict Warning Banner */}
+                      {oneShotTherapistId && (() => {
+                        const slots = generateCarePlanSchedule(oneShotDate, oneShotTime, intakeSessionCount, intakeFrequency);
+                        const multiAvail = checkTherapistMultiAvailability(oneShotTherapistId, slots);
+                        if (!multiAvail.available) {
+                          return (
+                            <div className="p-2.5 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800 flex items-start gap-2">
+                              <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                              <div>
+                                <span className="font-bold">Schedule Collision: </span>
+                                <span>{multiAvail.reason}. Please pick another therapist or alter start date/time.</span>
+                              </div>
+                            </div>
+                          );
+                        }
+                        return null;
+                      })()}
+                    </div>
+
+                    {/* DYNAMIC SCHEDULE PREVIEW TABLE */}
+                    {intakeSessionCount > 1 && (
+                      <div className="p-3 bg-white rounded-xl border border-teal-200/80 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] font-bold text-slate-800 flex items-center gap-1">
+                            <Calendar className="w-3.5 h-3.5 text-teal-600" />
+                            Care Plan Schedule ({intakeSessionCount} Visits)
+                          </span>
+                          <span className="text-[10px] text-teal-700 font-semibold">
+                            {intakeFrequency === 'DAILY' ? 'Daily' : intakeFrequency === 'WEEKLY' ? 'Weekly' : 'Alternate Days'}
+                          </span>
+                        </div>
+                        <div className="max-h-36 overflow-y-auto space-y-1.5 pr-1">
+                          {generateCarePlanSchedule(oneShotDate, oneShotTime, intakeSessionCount, intakeFrequency).map(slot => {
+                            const slotAvail = oneShotTherapistId
+                              ? checkTherapistAvailability(oneShotTherapistId, slot.dateStr, slot.timeStr)
+                              : { available: true, status: 'UNKNOWN' };
+                            return (
+                              <div key={slot.index} className="flex items-center justify-between p-2 bg-slate-50 rounded-lg text-[11px] border border-slate-100">
+                                <div className="flex items-center gap-2">
+                                  <span className="font-mono font-bold text-teal-800 bg-teal-100 px-1.5 py-0.5 rounded">
+                                    #{slot.index}
+                                  </span>
+                                  <span className="font-medium text-slate-700">
+                                    {slot.dateObj.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
+                                  </span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <span className="text-slate-500 font-semibold">{slot.timeStr}</span>
+                                  {oneShotTherapistId && (
+                                    slotAvail.available ? (
+                                      <span className="text-[9px] font-bold text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded">🟢 OK</span>
+                                    ) : (
+                                      <span className="text-[9px] font-bold text-rose-700 bg-rose-100 px-1.5 py-0.5 rounded" title={slotAvail.reason}>🔴 Busy</span>
+                                    )
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* PAYMENT MODE & PACKAGE FINANCIAL BREAKDOWN */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-700 mb-1">Payment Collection Mode</label>
+                        <select
+                          value={oneShotPaymentMode}
+                          onChange={e => setOneShotPaymentMode(e.target.value as any)}
+                          className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-teal-500 focus:outline-none"
+                        >
+                          <option value="CASH">Cash on Home Visit</option>
+                          <option value="CARD">Debit / Credit Card</option>
+                          <option value="UPI">UPI Digital Payment</option>
+                        </select>
+                      </div>
+
+                      {(() => {
+                        const curCat = categoriesList.find(c => c.id === newCategory);
+                        const baseFee = (curCat?.basePrice || 850) + (isUrgent ? 200 : 0);
+                        const pkg = calculatePackageDetails(baseFee, intakeSessionCount);
+                        return (
+                          <div className="bg-white p-3 rounded-xl border border-teal-200/80 text-xs flex flex-col justify-between">
+                            <div className="flex items-center justify-between text-[11px] text-slate-500">
+                              <span>Per Session: ₹{pkg.perSessionRate}</span>
+                              {pkg.discountPct > 0 && (
+                                <span className="text-emerald-700 font-bold bg-emerald-50 px-1.5 py-0.5 rounded">
+                                  Save ₹{pkg.discountSavings} ({pkg.discountPct}%)
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-baseline justify-between pt-1">
+                              <span className="text-[10px] uppercase font-bold text-slate-400">Total Care Package</span>
+                              <span className="text-lg font-black text-teal-800">
+                                ₹{pkg.totalPackageAmount.toFixed(2)}
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  </div>
+                ) : (
+                  /* QUEUE TO PENDING TRIAGE PREVIEW */
+                  <div className="p-4 bg-amber-50/50 rounded-2xl border border-amber-200/70 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-amber-900 flex items-center gap-1.5">
+                        <Clock className="w-3.5 h-3.5 text-amber-600" />
+                        Care Plan Intake Queue Summary
+                      </span>
+                      <span className="text-[10px] font-bold text-amber-800 bg-amber-100 border border-amber-200 px-2 py-0.5 rounded-full">
+                        Pending Coordinator Dispatch
+                      </span>
+                    </div>
+                    {(() => {
+                      const curCat = categoriesList.find(c => c.id === newCategory);
+                      const baseFee = (curCat?.basePrice || 850) + (isUrgent ? 200 : 0);
+                      const pkg = calculatePackageDetails(baseFee, intakeSessionCount);
+                      return (
+                        <div className="text-xs text-slate-600 space-y-1">
+                          <p><strong>Care Plan:</strong> {pkg.tierName} ({intakeSessionCount} Session{intakeSessionCount > 1 ? 's' : ''})</p>
+                          <p><strong>Frequency:</strong> {intakeFrequency === 'DAILY' ? 'Daily' : intakeFrequency === 'WEEKLY' ? 'Weekly' : 'Alternate Days'}</p>
+                          <p><strong>Estimated Total:</strong> ₹{pkg.totalPackageAmount.toFixed(2)} (₹{pkg.perSessionRate}/session)</p>
+                          <p className="text-[11px] text-amber-800 font-semibold pt-1">
+                            ℹ️ Request will be queued with this pre-agreed care plan so desk coordinator can dispatch a clinician from the map.
+                          </p>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                )}
               </div>
 
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Chief Complaint / Restricting Symptoms</label>
-                <textarea
-                  value={newSymptoms}
-                  onChange={e => setNewSymptoms(e.target.value)}
-                  placeholder="e.g. Severe lower back pain radiating down right leg..."
-                  rows={3}
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500"
-                />
-              </div>
-
-              <div className="flex items-center space-x-2 pt-2">
-                <input
-                  type="checkbox"
-                  id="urgentCheck"
-                  checked={isUrgent}
-                  onChange={e => setIsUrgent(e.target.checked)}
-                  className="rounded text-teal-600 focus:ring-teal-500"
-                />
-                <label htmlFor="urgentCheck" className="text-xs font-bold text-rose-700">
-                  Mark as Urgent Priority (+₹200 express dispatch)
-                </label>
-              </div>
-
+              {/* SUBMIT BUTTON */}
               <button
                 type="submit"
-                className="w-full bg-teal-600 hover:bg-teal-700 text-white font-bold py-3 rounded-xl transition text-xs shadow-xs"
+                className="w-full bg-teal-600 hover:bg-teal-700 active:bg-teal-800 text-white font-bold py-3.5 rounded-xl transition text-xs shadow-xs flex items-center justify-center gap-2"
               >
-                Register Patient & Create Triage Request ➔
+                {oneShotDispatch ? (
+                  <>
+                    <span>⚡ Register Patient & Dispatch Care Plan ({intakeSessionCount} Session{intakeSessionCount > 1 ? 's' : ''}) ➔</span>
+                  </>
+                ) : (
+                  <>
+                    <span>📋 Register Patient & Save Care Plan ({intakeSessionCount} Session{intakeSessionCount > 1 ? 's' : ''}) to Pending Triage ➔</span>
+                  </>
+                )}
               </button>
             </form>
           </div>
@@ -1841,60 +2529,352 @@ export default function App() {
       </main>
 
       {/* ========================================================================= */}
-      {/* MODAL 1: DISPATCH THERAPIST / SCHEDULE APPOINTMENT */}
+      {/* MODAL 1: DISPATCH THERAPIST & MULTI-SESSION CARE PLAN SCHEDULING */}
       {/* ========================================================================= */}
-      {selectedRequest && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-5 border border-slate-200">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <div>
-                <h3 className="text-base font-black text-slate-900">Dispatch Verified Clinician</h3>
-                <p className="text-xs text-slate-500">Assign a licensed physiotherapist to this in-home request.</p>
+      {selectedRequest && (() => {
+        const catPrice = selectedCatObj ? selectedCatObj.basePrice : 850;
+        const pkgDetails = calculatePackageDetails(catPrice, dispatchSessionCount);
+        const carePlanSlots = generateCarePlanSchedule(dispatchDate, dispatchTime, dispatchSessionCount, dispatchFrequency);
+        const multiAvail = selectedTherapistId
+          ? checkTherapistMultiAvailability(selectedTherapistId, carePlanSlots)
+          : { available: true, status: 'UNKNOWN', reason: '', conflictingSlots: [] as { index: number; dateStr: string; reason: string }[] };
+
+        return (
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-3xl max-w-xl w-full p-6 shadow-2xl space-y-4 border border-slate-200 max-h-[92vh] overflow-y-auto">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                <div>
+                  <h3 className="text-base font-black text-slate-900 flex items-center gap-2">
+                    <span>Clinical Triage & Care Plan Dispatch</span>
+                    <span className="text-[10px] font-bold text-teal-800 bg-teal-50 border border-teal-200 px-2 py-0.5 rounded-full">
+                      Offline Confirmed
+                    </span>
+                  </h3>
+                  <p className="text-xs text-slate-500">Confirm offline patient consultation, session package count, and dispatch assigned clinician.</p>
+                </div>
+                <button 
+                  onClick={() => setSelectedRequest(null)}
+                  className="text-slate-400 hover:text-slate-600 p-1 rounded-lg"
+                >
+                  ✕
+                </button>
               </div>
-              <button 
-                onClick={() => setSelectedRequest(null)}
-                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg"
-              >
-                ✕
-              </button>
-            </div>
 
-            <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-100 text-xs space-y-1">
-              <p><strong className="text-slate-700">Patient:</strong> {selectedRequest.patient?.fullName || 'Patient'}</p>
-              <p><strong className="text-slate-700">Address:</strong> {(selectedRequest as any).addressLine || selectedRequest.address?.addressLine}</p>
-              <p><strong className="text-slate-700">Specialty:</strong> {selectedRequest.category?.name || 'Orthopedic & Spine'}</p>
-              <p><strong className="text-slate-700">Base Fee:</strong> ₹{estimatedBasePrice}.00</p>
-            </div>
+              {/* PATIENT & CLINICAL BRIEF */}
+              <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-100 text-xs space-y-1">
+                <div className="flex justify-between items-start">
+                  <div>
+                    <p><strong className="text-slate-700">Patient:</strong> {selectedRequest.patient?.fullName || 'Patient'} • <span className="text-slate-500 font-mono">{(selectedRequest.patient as any)?.phoneNumber || 'No phone'}</span></p>
+                    <p><strong className="text-slate-700">Address:</strong> {(selectedRequest as any).addressLine || selectedRequest.address?.addressLine || 'Home Address'}</p>
+                    <p><strong className="text-slate-700">Condition:</strong> {selectedRequest.category?.name || 'Physiotherapy'} • {(selectedRequest as any).targetArea || 'Evaluation'}</p>
+                  </div>
+                  <div className="text-right">
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                      selectedRequest.urgency === 'URGENT' ? 'bg-rose-100 text-rose-800' : 'bg-slate-200 text-slate-700'
+                    }`}>
+                      {selectedRequest.urgency || 'ROUTINE'}
+                    </span>
+                  </div>
+                </div>
+                {(selectedRequest as any).chiefComplaint && (
+                  <p className="text-slate-600 pt-1 border-t border-slate-200/60">
+                    <strong className="text-slate-700">Chief Complaint:</strong> {(selectedRequest as any).chiefComplaint}
+                  </p>
+                )}
+              </div>
 
-            <div className="space-y-3">
-              <label className="block text-xs font-bold text-slate-700">Select Clinician from Roster</label>
-              <div className="space-y-2 max-h-48 overflow-y-auto">
-                {therapists.map(pt => (
-                  <label 
-                    key={pt.id}
-                    onClick={() => setSelectedTherapistId(pt.id)}
-                    className={`flex items-center justify-between p-3 rounded-xl border text-xs cursor-pointer transition ${
-                      selectedTherapistId === pt.id ? 'border-teal-500 bg-teal-50/50' : 'border-slate-200 hover:bg-slate-50'
-                    }`}
-                  >
-                    <div>
-                      <p className="font-bold text-slate-900">{pt.user?.fullName || 'Dr. Sarah Jenkins'}</p>
-                      <p className="text-slate-500 text-[11px]">{pt.licenseNumber || 'PT-IND-8941'} • ★ 4.9 (128 visits)</p>
-                    </div>
-                    <div className="text-right">
-                      <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded">Available</span>
-                    </div>
+              {/* OFFLINE PHONE CONSULTATION NOTES */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="block text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                    <Phone className="w-3.5 h-3.5 text-teal-600" />
+                    Offline Phone Consultation Notes *
                   </label>
-                ))}
+                  <span className="text-[10px] text-slate-500">Document phone discussion with patient</span>
+                </div>
+                <textarea
+                  value={dispatchOfflineNotes}
+                  onChange={e => setDispatchOfflineNotes(e.target.value)}
+                  placeholder="e.g. Spoke with patient on phone. Confirmed 5 sessions for ACL rehab, alternate days at 10 AM. Patient prefers Dr. Sarah Jenkins."
+                  rows={2}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                />
               </div>
-            </div>
 
-            <div className="flex items-center justify-between pt-3 border-t border-slate-100">
-              <div>
-                <span className="text-[10px] uppercase font-bold text-slate-400 block">Total Session Fee</span>
-                <span className="text-lg font-black text-teal-800">₹{estimatedBasePrice}.00</span>
+              {/* NUMBER OF SESSIONS REQUIRED (CARE PACKAGE PRESETS) */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="block text-xs font-bold text-slate-700">
+                    Care Plan Session Count *
+                  </label>
+                  <span className="text-[10px] font-bold text-teal-700 bg-teal-50 border border-teal-200 px-2 py-0.5 rounded-md">
+                    {pkgDetails.tierName}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
+                  {[
+                    { count: 1, label: '1 Session', sub: 'Single Visit', discount: '0%' },
+                    { count: 3, label: '3 Sessions', sub: 'Acute Relief', discount: '5% Off' },
+                    { count: 5, label: '5 Sessions', sub: 'Starter Plan', discount: '10% Off' },
+                    { count: 10, label: '10 Sessions', sub: 'Recovery', discount: '18% Off' },
+                    { count: 20, label: '20 Sessions', sub: 'Full Rehab', discount: '25% Off' }
+                  ].map(plan => {
+                    const isSelected = dispatchSessionCount === plan.count;
+                    return (
+                      <button
+                        key={plan.count}
+                        type="button"
+                        onClick={() => setDispatchSessionCount(plan.count)}
+                        className={`p-2 rounded-xl border text-center transition flex flex-col items-center justify-center ${
+                          isSelected
+                            ? 'border-teal-600 bg-teal-50 ring-2 ring-teal-500/30 text-teal-900 shadow-xs'
+                            : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-700'
+                        }`}
+                      >
+                        <span className="text-xs font-black">{plan.label}</span>
+                        <span className="text-[10px] font-semibold text-slate-500">{plan.sub}</span>
+                        <span className={`text-[9px] font-bold mt-1 px-1.5 py-0.2 rounded ${isSelected ? 'bg-teal-200 text-teal-800' : 'bg-slate-100 text-slate-600'}`}>
+                          {plan.discount}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div className="flex items-center gap-3 pt-0.5">
+                  <span className="text-[11px] font-bold text-slate-600">Custom Count:</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={30}
+                    value={dispatchSessionCount}
+                    onChange={e => setDispatchSessionCount(Math.max(1, Math.min(30, parseInt(e.target.value) || 1)))}
+                    className="w-16 px-2 py-1 bg-slate-50 border border-slate-300 rounded-lg text-xs font-bold text-slate-800 text-center"
+                  />
+                  <span className="text-[11px] text-slate-500">
+                    Total {dispatchSessionCount} session{dispatchSessionCount > 1 ? 's' : ''} to be scheduled
+                  </span>
+                </div>
               </div>
-              <div className="flex items-center space-x-2">
+
+              {/* RECURRENCE FREQUENCY */}
+              {dispatchSessionCount > 1 && (
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-bold text-slate-700">Recurrence Frequency</label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {[
+                      { key: 'ALTERNATE_DAYS', label: 'Alternate Days', desc: 'Every 2 days (Standard PT)' },
+                      { key: 'DAILY', label: 'Daily', desc: 'Consecutive days' },
+                      { key: 'WEEKLY', label: 'Weekly', desc: 'Once a week' }
+                    ].map(freq => {
+                      const isSelected = dispatchFrequency === freq.key;
+                      return (
+                        <button
+                          key={freq.key}
+                          type="button"
+                          onClick={() => setDispatchFrequency(freq.key as any)}
+                          className={`p-2 rounded-xl border text-left transition ${
+                            isSelected
+                              ? 'border-teal-500 bg-teal-50/70 text-teal-900 font-bold shadow-xs'
+                              : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-700'
+                          }`}
+                        >
+                          <p className="text-xs font-bold">{freq.label}</p>
+                          <p className="text-[10px] text-slate-500">{freq.desc}</p>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* FIRST SESSION DATE & TIME */}
+              <div className="bg-slate-50/80 p-3.5 rounded-2xl border border-slate-200/80 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                    <Calendar className="w-3.5 h-3.5 text-teal-600" />
+                    First Visit Date & Time *
+                  </span>
+                  <span className="text-[10px] font-bold text-teal-700 bg-teal-100/70 border border-teal-200 px-2 py-0.5 rounded-full">
+                    Recurrence starts from this date
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-600 mb-1">First Visit Date *</label>
+                    <input
+                      type="date"
+                      value={dispatchDate}
+                      min={new Date().toISOString().split('T')[0]}
+                      onChange={e => setDispatchDate(e.target.value)}
+                      required
+                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-teal-500 focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-600 mb-1">Visit Time *</label>
+                    <input
+                      type="time"
+                      value={dispatchTime}
+                      onChange={e => setDispatchTime(e.target.value)}
+                      required
+                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-teal-500 focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div className="text-[11px] text-slate-500 flex items-center justify-between pt-1 border-t border-slate-200/60">
+                  <span>Patient Preferred: <strong className="text-slate-700">{selectedRequest.preferredDate || 'Today'} ({selectedRequest.preferredTimeSlot || 'Morning'})</strong></span>
+                  <span className="text-teal-700 font-semibold text-[10px]">Estimated: 60 mins/session</span>
+                </div>
+              </div>
+
+              {/* THERAPIST SELECTION ROSTER WITH MULTI-SESSION AVAILABILITY */}
+              <div className="space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <label className="block text-xs font-bold text-slate-700">
+                    Assign Therapist * (Checking availability for all {dispatchSessionCount} sessions)
+                  </label>
+                </div>
+
+                <div className="space-y-2 max-h-44 overflow-y-auto pr-1">
+                  {therapists.map(pt => {
+                    const avail = checkTherapistMultiAvailability(pt.id, carePlanSlots);
+                    const isSelected = selectedTherapistId === pt.id;
+                    return (
+                      <label 
+                        key={pt.id}
+                        onClick={() => setSelectedTherapistId(pt.id)}
+                        className={`flex items-center justify-between p-3 rounded-xl border text-xs cursor-pointer transition ${
+                          isSelected 
+                            ? 'border-teal-500 bg-teal-50/60 ring-2 ring-teal-500/20 shadow-xs' 
+                            : 'border-slate-200 hover:bg-slate-50'
+                        }`}
+                      >
+                        <div className="space-y-0.5">
+                          <div className="flex items-center gap-1.5">
+                            <p className="font-bold text-slate-900">{pt.user?.fullName || 'Dr. Sarah Jenkins'}</p>
+                            {isSelected && <Check className="w-3.5 h-3.5 text-teal-600 shrink-0" />}
+                          </div>
+                          <p className="text-slate-500 text-[11px]">{pt.licenseNumber || 'PT-IND-8941'} • ★ {pt.rating || 4.9} ({pt.reviewCount || 35} visits)</p>
+                        </div>
+                        <div className="text-right">
+                          {avail.status === 'AVAILABLE' && (
+                            <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100 border border-emerald-300 px-2.5 py-0.5 rounded-full inline-flex items-center gap-1">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 inline-block"></span>
+                              {dispatchSessionCount > 1 ? `Available (All ${dispatchSessionCount})` : 'Available'}
+                            </span>
+                          )}
+                          {avail.status === 'BOOKED' && (
+                            <span className="text-[10px] font-bold text-rose-700 bg-rose-100 border border-rose-300 px-2.5 py-0.5 rounded-full inline-flex items-center gap-1" title={avail.reason}>
+                              <span className="w-1.5 h-1.5 rounded-full bg-rose-600 inline-block"></span>
+                              Conflict ({avail.conflictingSlots.length} slot{avail.conflictingSlots.length > 1 ? 's' : ''})
+                            </span>
+                          )}
+                          {avail.status === 'OFF_DUTY' && (
+                            <span className="text-[10px] font-bold text-amber-700 bg-amber-100 border border-amber-300 px-2.5 py-0.5 rounded-full inline-flex items-center gap-1">
+                              <span className="w-1.5 h-1.5 rounded-full bg-amber-600 inline-block"></span>
+                              Off-Duty
+                            </span>
+                          )}
+                        </div>
+                      </label>
+                    );
+                  })}
+                </div>
+
+                {/* Conflict warning banner if selected therapist has conflicts */}
+                {selectedTherapistId && !multiAvail.available && (
+                  <div className="p-2.5 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800 flex items-start gap-2">
+                    <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                    <div>
+                      <span className="font-bold">Schedule Conflict: </span>
+                      <span>{multiAvail.reason}. Please select an available therapist or change the visit date/time.</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* DYNAMIC CARE PLAN SCHEDULE PREVIEW TABLE */}
+              {dispatchSessionCount > 1 && (
+                <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                      <Calendar className="w-3.5 h-3.5 text-teal-600" />
+                      Generated Care Plan Schedule ({dispatchSessionCount} Sessions)
+                    </span>
+                    <span className="text-[10px] text-teal-700 font-semibold bg-teal-50 px-2 py-0.5 rounded-md border border-teal-200">
+                      {dispatchFrequency === 'DAILY' ? 'Daily' : dispatchFrequency === 'WEEKLY' ? 'Weekly' : 'Alternate Days'}
+                    </span>
+                  </div>
+                  <div className="max-h-36 overflow-y-auto space-y-1.5 pr-1">
+                    {carePlanSlots.map(slot => {
+                      const slotAvail = selectedTherapistId
+                        ? checkTherapistAvailability(selectedTherapistId, slot.dateStr, slot.timeStr)
+                        : { available: true, status: 'UNKNOWN' };
+                      return (
+                        <div key={slot.index} className="flex items-center justify-between p-2 bg-white rounded-lg text-xs border border-slate-200/80">
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono font-bold text-teal-800 bg-teal-100 px-1.5 py-0.5 rounded text-[10px]">
+                              Session {slot.index}
+                            </span>
+                            <span className="font-medium text-slate-700">
+                              {slot.dateObj.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-slate-500 font-semibold text-[11px]">{slot.timeStr}</span>
+                            {selectedTherapistId && (
+                              slotAvail.available ? (
+                                <span className="text-[9px] font-bold text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded">🟢 Slot OK</span>
+                              ) : (
+                                <span className="text-[9px] font-bold text-rose-700 bg-rose-100 px-1.5 py-0.5 rounded" title={slotAvail.reason}>🔴 Busy</span>
+                              )
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* PAYMENT MODE & FINANCIAL PACKAGE BREAKDOWN */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1">Payment Collection Mode</label>
+                  <select
+                    value={paymentMode}
+                    onChange={e => setPaymentMode(e.target.value as any)}
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-teal-500 focus:outline-none"
+                  >
+                    <option value="CASH_ON_SERVICE">Cash on Home Visit</option>
+                    <option value="ONLINE_CARD">Online Debit / Credit Card</option>
+                  </select>
+                </div>
+
+                <div className="bg-teal-50/60 p-3 rounded-xl border border-teal-200/80 text-xs flex flex-col justify-between">
+                  <div className="flex items-center justify-between text-[11px] text-slate-600">
+                    <span>Rate: ₹{pkgDetails.perSessionRate}/session</span>
+                    {pkgDetails.discountPct > 0 && (
+                      <span className="text-emerald-700 font-bold bg-emerald-100 px-1.5 py-0.5 rounded">
+                        Save ₹{pkgDetails.discountSavings} ({pkgDetails.discountPct}%)
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-baseline justify-between pt-1 border-t border-teal-200/50 mt-1">
+                    <span className="text-[10px] uppercase font-bold text-slate-500">Total Care Package</span>
+                    <span className="text-lg font-black text-teal-900">
+                      ₹{pkgDetails.totalPackageAmount.toFixed(2)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* MODAL ACTIONS */}
+              <div className="flex items-center justify-end space-x-2 pt-3 border-t border-slate-100">
                 <button
                   type="button"
                   onClick={() => setSelectedRequest(null)}
@@ -1905,15 +2885,15 @@ export default function App() {
                 <button
                   type="button"
                   onClick={handleAssignTherapist}
-                  className="bg-teal-600 hover:bg-teal-700 text-white px-5 py-2 rounded-xl text-xs font-bold transition shadow-xs"
+                  className="bg-teal-600 hover:bg-teal-700 text-white px-5 py-2.5 rounded-xl text-xs font-bold transition shadow-xs flex items-center gap-1.5"
                 >
-                  Confirm Dispatch ➔
+                  <span>Confirm Consultation & Dispatch ({dispatchSessionCount} Session{dispatchSessionCount > 1 ? 's' : ''}) ➔</span>
                 </button>
               </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* ========================================================================= */}
       {/* MODAL 2: CREATE NEW USER (ADMIN ONLY) */}
@@ -2065,7 +3045,7 @@ export default function App() {
 
               {newUserRole === 'Therapist' && (
                 <div className="p-3 bg-emerald-50/50 rounded-xl border border-emerald-200/60 space-y-2">
-                  <p className="text-[11px] font-bold text-emerald-900">Clinician Credentials:</p>
+                  <p className="text-[11px] font-bold text-emerald-900">Therapist Credentials:</p>
                   <input
                     type="text"
                     value={newUserLicense}

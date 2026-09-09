@@ -48,4 +48,26 @@ public class PricingService
             TotalFee: total
         );
     }
+
+    public static (decimal DiscountPercent, string PackageTierName) GetPackageTier(int sessionCount)
+    {
+        return sessionCount switch
+        {
+            >= 20 => (25.0m, "Full Rehabilitation Pass (20+ Sessions)"),
+            >= 10 => (18.0m, "Comprehensive Recovery Plan (10 Sessions)"),
+            >= 5 => (10.0m, "Starter Rehabilitation Package (5 Sessions)"),
+            >= 3 => (5.0m, "Acute Care Relief Package (3 Sessions)"),
+            _ => (0.0m, "Single Visit Evaluation")
+        };
+    }
+
+    public FeeBreakdown CalculatePackageSessionFee(decimal basePrice, double distanceKm, UrgencyLevel urgency, int sessionCount)
+    {
+        var (discountPercent, _) = GetPackageTier(sessionCount);
+        decimal discountedBase = discountPercent > 0
+            ? Math.Round(basePrice * (1.0m - (discountPercent / 100.0m)), 2)
+            : basePrice;
+
+        return CalculateSessionFee(discountedBase, distanceKm, urgency);
+    }
 }
