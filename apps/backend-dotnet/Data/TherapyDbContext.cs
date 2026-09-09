@@ -26,7 +26,7 @@ public class TherapyDbContext : DbContext
 
         modelBuilder.Entity<TherapistProfile>(entity =>
         {
-            entity.Property(e => e.SpecializationsJson).HasColumnName("specializations");
+            entity.Property(e => e.SpecializationsJson).HasColumnName("specializations").HasColumnType("jsonb");
         });
 
         modelBuilder.Entity<User>(entity =>

@@ -148,15 +148,37 @@ export default function App() {
   });
 
   // =========================================================================
-  // UNIFIED AUTHENTICATION GATEWAY STATE
+  // UNIFIED AUTHENTICATION GATEWAY & 30-DAY BIOMETRIC LEASE STATE
   // =========================================================================
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
-  const [authMethod, setAuthMethod] = useState<'PHONE_OTP' | 'BIOMETRIC' | 'SSO'>('PHONE_OTP');
   const [authStep, setAuthStep] = useState<'PHONE_INPUT' | 'OTP_INPUT' | 'PROFILE_SETUP'>('PHONE_INPUT');
   const [authPhone, setAuthPhone] = useState<string>('+91 91234 56789');
   const [authOtp, setAuthOtp] = useState<string>('');
   const [authLoading, setAuthLoading] = useState<boolean>(false);
   const [isPreCreatedAccount, setIsPreCreatedAccount] = useState<boolean>(false);
+
+  // 30-Day Biometric Session Lease (Enables single mobile app with 30-day biometric validity)
+  const [sessionLease, setSessionLease] = useState<{
+    active: boolean;
+    userId: string;
+    userName: string;
+    phoneNumber: string;
+    role: 'PATIENT' | 'THERAPIST';
+    lastOtpVerifiedAt: number;
+    biometricEnabled: boolean;
+  } | null>({
+    active: true,
+    userId: 'usr_patient_281753',
+    userName: 'Rajesh Sharma',
+    phoneNumber: '+91 91234 56789',
+    role: 'PATIENT',
+    lastOtpVerifiedAt: Date.now() - (1 * 24 * 60 * 60 * 1000), // 1 day ago (29 days remaining)
+    biometricEnabled: true,
+  });
+
+  // State flag to simulate 30-day lease expiration for immediate testing
+  const [isLeaseSimulatedExpired, setIsLeaseSimulatedExpired] = useState<boolean>(false);
+  const [showBiometricEnrollModal, setShowBiometricEnrollModal] = useState<boolean>(false);
 
   // New Patient Registration State (Adaptive Onboarding)
   const [regFullName, setRegFullName] = useState<string>('');
@@ -376,8 +398,26 @@ export default function App() {
   };
 
   // =========================================================================
-  // UNIFIED AUTHENTICATION GATEWAY HANDLERS
+  // 30-DAY BIOMETRIC SESSION LEASE & AUTHENTICATION HANDLERS
   // =========================================================================
+
+  // 30 Days in milliseconds (30 * 24 * 60 * 60 * 1000)
+  const LEASE_DURATION_MS = 30 * 24 * 60 * 60 * 1000;
+
+  const isLeaseValid = () => {
+    if (!sessionLease || !sessionLease.active || !sessionLease.biometricEnabled) return false;
+    if (isLeaseSimulatedExpired) return false;
+    const elapsed = Date.now() - sessionLease.lastOtpVerifiedAt;
+    return elapsed < LEASE_DURATION_MS;
+  };
+
+  const getRemainingDays = () => {
+    if (!sessionLease || isLeaseSimulatedExpired) return 0;
+    const elapsed = Date.now() - sessionLease.lastOtpVerifiedAt;
+    const remainingMs = LEASE_DURATION_MS - elapsed;
+    if (remainingMs <= 0) return 0;
+    return Math.ceil(remainingMs / (24 * 60 * 60 * 1000));
+  };
 
   // 1. Request OTP (Sends 4-digit code, fixed 1234 in test mode)
   const handleRequestOtp = async (phoneToUse?: string) => {
@@ -413,7 +453,7 @@ export default function App() {
     }
   };
 
-  // 2. Verify OTP (Works for both Admin-Created & Returning & Brand New Patients)
+  // 2. Verify OTP (Works for both Admin-Created & Returning Patients and Clinicians!)
   const handleVerifyOtp = async (otpToUse?: string) => {
     const targetOtp = (otpToUse || authOtp).trim();
     if (!targetOtp) {
@@ -430,30 +470,53 @@ export default function App() {
       const data = await res.json();
       if (data.success) {
         if (!data.isNewUser && data.user) {
-          // Patient exists (Admin pre-created OR returning)
-          setPatientProfile(prev => ({
-            ...prev,
-            fullName: data.user.fullName || prev.fullName,
-            phone: data.user.phoneNumber || prev.phone,
-            email: data.user.email || prev.email,
-            bloodGroup: data.user.bloodGroup || prev.bloodGroup,
-            emergencyName: data.user.emergencyContactName || prev.emergencyName,
-            emergencyPhone: data.user.emergencyContactPhone || prev.emergencyPhone,
-            conditions: data.user.medicalConditions 
-              ? data.user.medicalConditions.split(',').map((s: string) => s.trim()) 
-              : prev.conditions
-          }));
+          // Resolve role from backend: 'Therapist' vs 'Patient'
+          const userRole: 'PATIENT' | 'THERAPIST' = 
+            data.user.role?.toUpperCase() === 'THERAPIST' ? 'THERAPIST' : 'PATIENT';
+
+          setRoleMode(userRole);
+
+          if (userRole === 'PATIENT') {
+            setPatientProfile(prev => ({
+              ...prev,
+              fullName: data.user.fullName || prev.fullName,
+              phone: data.user.phoneNumber || prev.phone,
+              email: data.user.email || prev.email,
+              bloodGroup: data.user.bloodGroup || prev.bloodGroup,
+              emergencyName: data.user.emergencyContactName || prev.emergencyName,
+              emergencyPhone: data.user.emergencyContactPhone || prev.emergencyPhone,
+              conditions: data.user.medicalConditions 
+                ? data.user.medicalConditions.split(',').map((s: string) => s.trim()) 
+                : prev.conditions
+            }));
+          }
+
           setIsPreCreatedAccount(!!data.isPreCreatedByAdmin);
-          setIsAuthenticated(true);
-          setRoleMode('PATIENT');
+
+          // Create or Renew the 30-Day Biometric Session Lease!
+          const newLease = {
+            active: true,
+            userId: data.user.id,
+            userName: data.user.fullName,
+            phoneNumber: data.user.phoneNumber,
+            role: userRole,
+            lastOtpVerifiedAt: Date.now(),
+            biometricEnabled: true,
+          };
+          setSessionLease(newLease);
+          setIsLeaseSimulatedExpired(false);
+
+          // Prompt user to enable 30-Day Biometric access
+          setShowBiometricEnrollModal(true);
+
           showToast(
             'SUCCESS', 
-            data.isPreCreatedByAdmin ? '🏥 Care Desk Account Ready' : 'Welcome Back!', 
-            `Logged in as ${data.user.fullName}. ${data.isPreCreatedByAdmin ? 'Pre-registered visits loaded.' : ''}`
+            userRole === 'THERAPIST' ? '🩺 Clinician Verified' : '👤 Patient Verified', 
+            `Welcome, ${data.user.fullName}! Phone verified.`
           );
           refreshActiveData();
         } else {
-          // Brand new user needs to complete profile
+          // Brand new patient needs to complete profile
           setAuthStep('PROFILE_SETUP');
           setRegFullName('');
           showToast('INFO', 'Phone Verified', 'Please complete your patient profile to continue.');
@@ -464,7 +527,6 @@ export default function App() {
     } catch {
       // Local fallback
       setIsAuthenticated(true);
-      setRoleMode('PATIENT');
       showToast('SUCCESS', 'Welcome to TherapyHub', 'Signed in successfully (local mode).');
     } finally {
       setAuthLoading(false);
@@ -507,8 +569,21 @@ export default function App() {
           emergencyPhone: regEmergencyPhone.trim() || prev.emergencyPhone,
           conditions: regConditions
         }));
-        setIsAuthenticated(true);
         setRoleMode('PATIENT');
+
+        // Create 30-Day Biometric Session Lease
+        setSessionLease({
+          active: true,
+          userId: data.user.id,
+          userName: data.user.fullName,
+          phoneNumber: data.user.phoneNumber,
+          role: 'PATIENT',
+          lastOtpVerifiedAt: Date.now(),
+          biometricEnabled: true,
+        });
+        setIsLeaseSimulatedExpired(false);
+
+        setShowBiometricEnrollModal(true);
         showToast('SUCCESS', '🎉 Registration Complete', `Welcome to TherapyHub, ${data.user.fullName}!`);
         refreshActiveData();
       } else {
@@ -523,16 +598,21 @@ export default function App() {
         primaryAddress: regAddress.trim() || prev.primaryAddress,
         conditions: regConditions
       }));
-      setIsAuthenticated(true);
       setRoleMode('PATIENT');
+      setShowBiometricEnrollModal(true);
       showToast('SUCCESS', 'Registration Complete', `Welcome, ${regFullName.trim()}!`);
     } finally {
       setAuthLoading(false);
     }
   };
 
-  // 4. Biometric Unlock Simulation (Face ID / Fingerprint)
+  // 4. Biometric 1-Tap Unlock (Checks 30-day lease validity & auto-routes role)
   const handleBiometricUnlock = () => {
+    if (!isLeaseValid()) {
+      showToast('WARNING', '30-Day Lease Expired', 'Your 30-day security lease has expired. Please verify with Phone OTP.');
+      setAuthStep('PHONE_INPUT');
+      return;
+    }
     setBiometricModal(true);
     setBiometricScanning(true);
     setTimeout(() => {
@@ -540,63 +620,55 @@ export default function App() {
       setTimeout(() => {
         setBiometricModal(false);
         setIsAuthenticated(true);
-        setRoleMode('PATIENT');
-        showToast('SUCCESS', '🔐 Biometric Verified', 'Authenticated via Face ID / Fingerprint. Welcome back!');
+        // Automatically route according to role in the lease!
+        if (sessionLease) {
+          setRoleMode(sessionLease.role);
+          if (sessionLease.role === 'PATIENT') {
+            setPatientProfile(prev => ({
+              ...prev,
+              fullName: sessionLease.userName,
+              phone: sessionLease.phoneNumber
+            }));
+          }
+        }
+        showToast(
+          'SUCCESS', 
+          '🔐 Biometric Verified', 
+          `Welcome back, ${sessionLease?.userName || ''}! Logged into ${sessionLease?.role === 'THERAPIST' ? 'Clinician Cockpit' : 'Patient Portal'}.`
+        );
         refreshActiveData();
       }, 500);
-    }, 1100);
+    }, 900);
   };
 
-  // 5. Social SSO Authentication
-  const handleSsoAuth = async (provider: 'Google' | 'Apple') => {
-    setAuthLoading(true);
-    try {
-      const res = await fetch(`${API_BASE}/auth/sso`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          provider,
-          email: provider === 'Google' ? 'rajesh.sharma@gmail.com' : 'rajesh.sharma@icloud.com',
-          fullName: 'Rajesh Sharma',
-          phoneNumber: '+91 91234 56789'
-        })
-      });
-      const data = await res.json();
-      if (data.success && data.user) {
-        setPatientProfile(prev => ({
-          ...prev,
-          fullName: data.user.fullName,
-          phone: data.user.phoneNumber,
-          email: data.user.email
-        }));
-        setIsAuthenticated(true);
-        setRoleMode('PATIENT');
-        showToast('SUCCESS', `✓ Signed in with ${provider}`, `Welcome, ${data.user.fullName}!`);
-        refreshActiveData();
-      }
-    } catch {
-      setIsAuthenticated(true);
-      setRoleMode('PATIENT');
-      showToast('SUCCESS', `${provider} Sign-In`, `Logged in via ${provider} SSO.`);
-    } finally {
-      setAuthLoading(false);
+  // 5. Confirm Biometric 30-Day Enrollment
+  const handleConfirmBiometricEnrollment = () => {
+    setShowBiometricEnrollModal(false);
+    setIsAuthenticated(true);
+    showToast(
+      'SUCCESS', 
+      '🔐 30-Day Biometrics Enabled', 
+      'Face ID / Touch ID activated! You have 1-tap instant access for the next 30 days.'
+    );
+  };
+
+  // 6. Toggle Simulated 30-Day Lease Expiry (Demo Test Tool)
+  const handleToggleSimulateExpiration = () => {
+    setIsLeaseSimulatedExpired(prev => !prev);
+    if (!isLeaseSimulatedExpired) {
+      showToast('INFO', '⏱️ Lease Expired (Simulated)', 'Simulating 30-day lease expiry. Phone OTP is now required to renew.');
+      setAuthStep('PHONE_INPUT');
+    } else {
+      showToast('SUCCESS', '⏱️ Lease Restored', 'Simulated expiration removed. 30-day biometric lease is active.');
     }
   };
 
-  // 6. Sign Out
+  // 7. Sign Out
   const handleSignOut = () => {
     setIsAuthenticated(false);
     setAuthStep('PHONE_INPUT');
     setAuthOtp('');
-    showToast('INFO', 'Signed Out', 'You have been safely signed out of TherapyHub.');
-  };
-
-  // 7. Clinician Quick Bypass
-  const handleClinicianLogin = () => {
-    setRoleMode('THERAPIST');
-    setIsAuthenticated(true);
-    showToast('SUCCESS', '🩺 Clinician Verified', 'Logged into Dr. Sarah Jenkins Clinician Cockpit.');
-    refreshActiveData();
+    showToast('INFO', 'Signed Out', 'You have been safely signed out. You can unlock with Biometrics or sign in with another phone.');
   };
 
   // Save Profile Handler
@@ -832,7 +904,7 @@ export default function App() {
       )}
       
       {/* ========================================================================= */}
-      {/* UNIFIED PATIENT & CLINICIAN AUTHENTICATION GATEWAY */}
+      {/* UNIFIED PATIENT & CLINICIAN AUTHENTICATION GATEWAY (PHONE OTP + 30-DAY BIOMETRICS) */}
       {/* ========================================================================= */}
       {!isAuthenticated ? (
         <ScrollView style={styles.authScrollArea} contentContainerStyle={{ padding: 18, paddingBottom: 60 }}>
@@ -852,54 +924,105 @@ export default function App() {
             </Text>
           </View>
 
-          {/* AUTHENTICATION METHOD TABS */}
-          <View style={styles.authMethodTabs}>
-            <TouchableOpacity 
-              style={[styles.authMethodTab, authMethod === 'PHONE_OTP' && styles.authMethodTabActive]}
-              onPress={() => setAuthMethod('PHONE_OTP')}
-            >
-              <Text style={styles.authMethodTabIcon}>📱</Text>
-              <Text style={[styles.authMethodTabText, authMethod === 'PHONE_OTP' && styles.authMethodTabTextActive]}>
-                Phone OTP
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity 
-              style={[styles.authMethodTab, authMethod === 'BIOMETRIC' && styles.authMethodTabActive]}
-              onPress={() => setAuthMethod('BIOMETRIC')}
-            >
-              <Text style={styles.authMethodTabIcon}>🔐</Text>
-              <Text style={[styles.authMethodTabText, authMethod === 'BIOMETRIC' && styles.authMethodTabTextActive]}>
-                Biometric
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity 
-              style={[styles.authMethodTab, authMethod === 'SSO' && styles.authMethodTabActive]}
-              onPress={() => setAuthMethod('SSO')}
-            >
-              <Text style={styles.authMethodTabIcon}>🌐</Text>
-              <Text style={[styles.authMethodTabText, authMethod === 'SSO' && styles.authMethodTabTextActive]}>
-                Social SSO
-              </Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* TAB 1: PHONE OTP FLOW */}
-          {authMethod === 'PHONE_OTP' && (
+          {/* 1-TAP BIOMETRIC GATEWAY (WHEN 30-DAY LEASE IS ACTIVE) */}
+          {isLeaseValid() && sessionLease ? (
             <View style={styles.authCard}>
+              <View style={styles.bioGraphicBox}>
+                <View style={styles.bioPulseRing}>
+                  <Text style={{ fontSize: 56 }}>🪪</Text>
+                </View>
+              </View>
+
+              <Text style={[styles.authCardTitle, { textAlign: 'center' }]}>
+                Welcome Back, {sessionLease.userName.split(' ')[0]}
+              </Text>
+              
+              <View style={{ alignItems: 'center', marginBottom: 12 }}>
+                <View style={[styles.activeRoleTag, sessionLease.role === 'THERAPIST' ? styles.therapistRoleTag : styles.patientRoleTag]}>
+                  <Text style={[styles.activeRoleTagText, sessionLease.role === 'THERAPIST' ? styles.therapistRoleTagText : styles.patientRoleTagText]}>
+                    {sessionLease.role === 'THERAPIST' ? '🩺 Verified Clinician Cockpit' : '👤 Verified Patient Portal'}
+                  </Text>
+                </View>
+              </View>
+
+              {/* 30-DAY LEASE STATUS CARD */}
+              <View style={styles.leaseStatusBanner}>
+                <Text style={styles.leaseStatusIcon}>🔐</Text>
+                <View style={{ flex: 1, marginLeft: 10 }}>
+                  <Text style={styles.leaseStatusTitle}>30-Day Biometric Lease: Active</Text>
+                  <Text style={styles.leaseStatusSubtitle}>
+                    {getRemainingDays()} days remaining on this device before next OTP re-verification.
+                  </Text>
+                </View>
+              </View>
+
+              {/* 1-TAP UNLOCK BUTTON */}
+              <TouchableOpacity 
+                style={styles.authBioBigBtn}
+                onPress={handleBiometricUnlock}
+              >
+                <Text style={styles.authBioBigBtnText}>
+                  🔐 Unlock with Face ID / Fingerprint (1-Tap)
+                </Text>
+              </TouchableOpacity>
+
+              {/* SWITCH USER / LOGIN WITH DIFFERENT PHONE */}
+              <TouchableOpacity 
+                style={styles.authTextBtn}
+                onPress={() => {
+                  setSessionLease(null);
+                  setAuthStep('PHONE_INPUT');
+                }}
+              >
+                <Text style={styles.authTextBtnLabel}>
+                  📱 Switch Account / Login with Another Phone Number
+                </Text>
+              </TouchableOpacity>
+
+              {/* SIMULATE LEASE EXPIRATION BUTTON (DEMO TEST TOOL) */}
+              <TouchableOpacity 
+                style={styles.simulateExpireBtn}
+                onPress={handleToggleSimulateExpiration}
+              >
+                <Text style={styles.simulateExpireBtnText}>
+                  ⏱️ Simulate 30-Day Lease Expiry (Test Security Renewal)
+                </Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            /* PHONE OTP AUTHENTICATION (FOR FIRST TIME LOGIN OR 30-DAY RENEWAL) */
+            <View style={styles.authCard}>
+              {/* EXPIRED LEASE WARNING BANNER */}
+              {isLeaseSimulatedExpired && (
+                <View style={styles.expiredAlertBox}>
+                  <Text style={styles.expiredAlertIcon}>⚠️</Text>
+                  <View style={{ flex: 1, marginLeft: 8 }}>
+                    <Text style={styles.expiredAlertTitle}>30-Day Security Lease Expired</Text>
+                    <Text style={styles.expiredAlertSub}>
+                      For clinical privacy, please enter your mobile number and verify OTP to renew your 30-day biometric lease.
+                    </Text>
+                  </View>
+                  <TouchableOpacity 
+                    style={styles.restoreLeaseBtn}
+                    onPress={handleToggleSimulateExpiration}
+                  >
+                    <Text style={styles.restoreLeaseBtnText}>Reset</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+
               {/* STEP 1: ENTER PHONE NUMBER */}
               {authStep === 'PHONE_INPUT' && (
                 <View>
-                  <Text style={styles.authCardTitle}>Sign In or Register</Text>
+                  <Text style={styles.authCardTitle}>Mobile Phone & OTP Sign In</Text>
                   <Text style={styles.authCardSubtitle}>
-                    Enter your mobile number. Patients registered over phone by DeskBoy can enter their number to instantly load their account & dispatches.
+                    Enter your mobile number. A single mobile app automatically detects whether you are a Patient or Clinician.
                   </Text>
 
-                  {/* QUICK DEMO PERSONAS */}
-                  <Text style={styles.authQuickLabel}>Quick 1-Tap Personas (Developer & Demo):</Text>
+                  {/* QUICK 1-TAP PERSONAS (DEMO & TESTING) */}
+                  <Text style={styles.authQuickLabel}>Quick 1-Tap Personas (Test Ready):</Text>
                   
-                  {/* PERSONA 1: ADMIN-CREATED PATIENT */}
+                  {/* PERSONA 1: PATIENT RAJESH SHARMA */}
                   <TouchableOpacity 
                     style={styles.authPersonaChip}
                     onPress={() => {
@@ -913,8 +1036,8 @@ export default function App() {
                     <View style={{ flex: 1, marginLeft: 10 }}>
                       <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                         <Text style={styles.authPersonaName}>Rajesh Sharma</Text>
-                        <View style={styles.authAdminCreatedTag}>
-                          <Text style={styles.authAdminCreatedTagText}>Admin-Created</Text>
+                        <View style={styles.authPatientTag}>
+                          <Text style={styles.authPatientTagText}>Patient</Text>
                         </View>
                       </View>
                       <Text style={styles.authPersonaPhone}>+91 91234 56789 • Pre-registered by DeskBoy</Text>
@@ -922,31 +1045,51 @@ export default function App() {
                     <Text style={styles.authPersonaArrow}>➔</Text>
                   </TouchableOpacity>
 
-                  {/* PERSONA 2: BRAND NEW PATIENT */}
+                  {/* PERSONA 2: CLINICIAN DR. SARAH JENKINS */}
                   <TouchableOpacity 
-                    style={[styles.authPersonaChip, { marginTop: 8 }]}
+                    style={[styles.authPersonaChip, { marginTop: 8, borderColor: '#38bdf8', backgroundColor: '#f0f9ff' }]}
+                    onPress={() => {
+                      setAuthPhone('+91 98765 00001');
+                      handleRequestOtp('+91 98765 00001');
+                    }}
+                  >
+                    <View style={[styles.authPersonaAvatar, { backgroundColor: '#e0f2fe' }]}>
+                      <Text style={[styles.authPersonaAvatarText, { color: '#0284c7' }]}>SJ</Text>
+                    </View>
+                    <View style={{ flex: 1, marginLeft: 10 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                        <Text style={styles.authPersonaName}>Dr. Sarah Jenkins, PT</Text>
+                        <View style={[styles.authPatientTag, { backgroundColor: '#e0f2fe', borderColor: '#bae6fd' }]}>
+                          <Text style={[styles.authPatientTagText, { color: '#0284c7' }]}>Clinician</Text>
+                        </View>
+                      </View>
+                      <Text style={[styles.authPersonaPhone, { color: '#0284c7' }]}>+91 98765 00001 • Dispatched Visits & Cockpit</Text>
+                    </View>
+                    <Text style={[styles.authPersonaArrow, { color: '#0284c7' }]}>➔</Text>
+                  </TouchableOpacity>
+
+                  {/* PERSONA 3: BRAND NEW PATIENT */}
+                  <TouchableOpacity 
+                    style={[styles.authPersonaChip, { marginTop: 8, borderColor: '#c7d2fe', backgroundColor: '#f5f3ff' }]}
                     onPress={() => {
                       setAuthPhone('+91 97777 66666');
                       handleRequestOtp('+91 97777 66666');
                     }}
                   >
-                    <View style={[styles.authPersonaAvatar, { backgroundColor: '#e0e7ff' }]}>
-                      <Text style={[styles.authPersonaAvatarText, { color: '#4338ca' }]}>✨</Text>
+                    <View style={[styles.authPersonaAvatar, { backgroundColor: '#ede9fe' }]}>
+                      <Text style={[styles.authPersonaAvatarText, { color: '#6366f1' }]}>✨</Text>
                     </View>
                     <View style={{ flex: 1, marginLeft: 10 }}>
                       <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                        <Text style={styles.authPersonaName}>New Patient Registration</Text>
-                        <View style={[styles.authAdminCreatedTag, { backgroundColor: '#eef2ff', borderColor: '#c7d2fe' }]}>
-                          <Text style={[styles.authAdminCreatedTagText, { color: '#4f46e5' }]}>Self-Service</Text>
-                        </View>
+                        <Text style={styles.authPersonaName}>New Patient (Self-Registration)</Text>
                       </View>
-                      <Text style={styles.authPersonaPhone}>+91 97777 66666 • Onboarding Flow</Text>
+                      <Text style={[styles.authPersonaPhone, { color: '#6366f1' }]}>+91 97777 66666 • Onboarding Flow</Text>
                     </View>
-                    <Text style={styles.authPersonaArrow}>➔</Text>
+                    <Text style={[styles.authPersonaArrow, { color: '#6366f1' }]}>➔</Text>
                   </TouchableOpacity>
 
                   {/* PHONE NUMBER INPUT */}
-                  <Text style={[styles.authFieldLabel, { marginTop: 16 }]}>Or Enter Any Mobile Number:</Text>
+                  <Text style={[styles.authFieldLabel, { marginTop: 18 }]}>Or Enter Any Mobile Number:</Text>
                   <View style={styles.phoneInputRow}>
                     <View style={styles.countryCodeBadge}>
                       <Text style={styles.countryCodeText}>🇮🇳 +91</Text>
@@ -967,16 +1110,8 @@ export default function App() {
                     onPress={() => handleRequestOtp()}
                   >
                     <Text style={styles.authPrimaryBtnText}>
-                      {authLoading ? 'Sending OTP Code...' : 'Get Verification Code →'}
+                      {authLoading ? 'Sending OTP Code...' : 'Get 4-Digit Verification Code →'}
                     </Text>
-                  </TouchableOpacity>
-
-                  {/* FAST BIOMETRIC SHORTCUT BUTTON */}
-                  <TouchableOpacity 
-                    style={styles.authBioShortcutBtn}
-                    onPress={handleBiometricUnlock}
-                  >
-                    <Text style={styles.authBioShortcutText}>🔐 1-Tap Biometric Quick Sign In</Text>
                   </TouchableOpacity>
                 </View>
               )}
@@ -1029,7 +1164,7 @@ export default function App() {
                     onPress={() => handleVerifyOtp()}
                   >
                     <Text style={styles.authPrimaryBtnText}>
-                      {authLoading ? 'Verifying OTP...' : 'Verify & Enter TherapyHub ➔'}
+                      {authLoading ? 'Verifying OTP...' : 'Verify & Sign In ➔'}
                     </Text>
                   </TouchableOpacity>
 
@@ -1054,7 +1189,7 @@ export default function App() {
 
                   <Text style={styles.authCardTitle}>Complete Patient Profile 🎉</Text>
                   <Text style={styles.authCardSubtitle}>
-                    Your phone <Text style={{ fontWeight: 'bold' }}>{authPhone}</Text> is verified. Fill your details to schedule visiting physiotherapists:
+                    Your phone <Text style={{ fontWeight: 'bold' }}>{authPhone}</Text> is verified. Fill details to schedule visiting physiotherapists:
                   </Text>
 
                   <Text style={styles.authFieldLabel}>Full Legal Name *</Text>
@@ -1152,83 +1287,13 @@ export default function App() {
                     onPress={handleRegisterPatient}
                   >
                     <Text style={styles.authPrimaryBtnText}>
-                      {authLoading ? 'Creating Account...' : 'Complete Profile & Start Care ➔'}
+                      {authLoading ? 'Creating Account...' : 'Complete Profile & Enable Biometrics ➔'}
                     </Text>
                   </TouchableOpacity>
                 </View>
               )}
             </View>
           )}
-
-          {/* TAB 2: BIOMETRIC LOGIN */}
-          {authMethod === 'BIOMETRIC' && (
-            <View style={styles.authCard}>
-              <View style={styles.bioGraphicBox}>
-                <View style={styles.bioPulseRing}>
-                  <Text style={{ fontSize: 56 }}>🪪</Text>
-                </View>
-              </View>
-              <Text style={[styles.authCardTitle, { textAlign: 'center' }]}>1-Tap Biometric Unlock</Text>
-              <Text style={[styles.authCardSubtitle, { textAlign: 'center' }]}>
-                Authenticate instantly using your device's built-in Face ID or Touch ID biometric sensors. Zero passwords needed.
-              </Text>
-
-              <TouchableOpacity 
-                style={styles.authBioBigBtn}
-                onPress={handleBiometricUnlock}
-              >
-                <Text style={styles.authBioBigBtnText}>🔐 Scan Face ID / Fingerprint</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity 
-                style={styles.authTextBtn}
-                onPress={() => setAuthMethod('PHONE_OTP')}
-              >
-                <Text style={styles.authTextBtnLabel}>Switch to Phone OTP Login</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-
-          {/* TAB 3: SOCIAL SSO */}
-          {authMethod === 'SSO' && (
-            <View style={styles.authCard}>
-              <Text style={styles.authCardTitle}>Single Sign-On (SSO)</Text>
-              <Text style={styles.authCardSubtitle}>
-                Sign in with your verified Google or Apple account.
-              </Text>
-
-              <TouchableOpacity 
-                style={styles.ssoGoogleBtn}
-                onPress={() => handleSsoAuth('Google')}
-              >
-                <Text style={styles.ssoGoogleIcon}>G</Text>
-                <Text style={styles.ssoGoogleText}>Continue with Google</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity 
-                style={styles.ssoAppleBtn}
-                onPress={() => handleSsoAuth('Apple')}
-              >
-                <Text style={styles.ssoAppleIcon}></Text>
-                <Text style={styles.ssoAppleText}>Continue with Apple</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity 
-                style={[styles.authTextBtn, { marginTop: 12 }]}
-                onPress={() => setAuthMethod('PHONE_OTP')}
-              >
-                <Text style={styles.authTextBtnLabel}>Switch to Phone OTP Login</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-
-          {/* CLINICIAN QUICK ACCESS FOOTER */}
-          <View style={styles.authClinicianFooter}>
-            <Text style={styles.authClinicianFooterText}>Licensed Healthcare Provider?</Text>
-            <TouchableOpacity onPress={handleClinicianLogin}>
-              <Text style={styles.authClinicianLink}>Access Clinician Cockpit →</Text>
-            </TouchableOpacity>
-          </View>
         </ScrollView>
       ) : (
         <>
@@ -1245,28 +1310,22 @@ export default function App() {
                     <Text style={styles.inHomePillText}>IN-HOME CARE</Text>
                   </View>
                 </View>
-                <Text style={styles.brandSub}>Certified Home Physiotherapy</Text>
+                <Text style={styles.brandSub}>
+                  {roleMode === 'THERAPIST' ? 'Clinician Care Cockpit' : 'Certified Home Physiotherapy'}
+                </Text>
               </View>
             </View>
 
-            {/* ROLE TOGGLE & LOGOUT */}
-            <View style={styles.roleToggle}>
-              <TouchableOpacity 
-                style={[styles.roleBtn, roleMode === 'PATIENT' && styles.roleBtnActive]}
-                onPress={() => setRoleMode('PATIENT')}
-              >
-                <Text style={[styles.roleBtnText, roleMode === 'PATIENT' && styles.roleBtnTextActive]}>
-                  Patient
+            {/* ROLE & 30-DAY LEASE BADGES & LOGOUT */}
+            <View style={styles.headerRightRow}>
+              <View style={[styles.activeRoleTag, roleMode === 'THERAPIST' ? styles.therapistRoleTag : styles.patientRoleTag]}>
+                <Text style={[styles.activeRoleTagText, roleMode === 'THERAPIST' ? styles.therapistRoleTagText : styles.patientRoleTagText]}>
+                  {roleMode === 'THERAPIST' ? '🩺 CLINICIAN' : '👤 PATIENT'}
                 </Text>
-              </TouchableOpacity>
-              <TouchableOpacity 
-                style={[styles.roleBtn, roleMode === 'THERAPIST' && styles.roleBtnActive]}
-                onPress={() => setRoleMode('THERAPIST')}
-              >
-                <Text style={[styles.roleBtnText, roleMode === 'THERAPIST' && styles.roleBtnTextActive]}>
-                  Clinician
-                </Text>
-              </TouchableOpacity>
+              </View>
+              <View style={styles.leasePill}>
+                <Text style={styles.leasePillText}>🔐 {getRemainingDays()}d</Text>
+              </View>
               <TouchableOpacity 
                 style={styles.headerLogoutBtn}
                 onPress={handleSignOut}
@@ -2197,6 +2256,65 @@ export default function App() {
             <View style={styles.biometricDotActive} />
           </View>
         )}
+      </View>
+    </View>
+  </Modal>
+
+  {/* ========================================================================= */}
+  {/* 0B. 30-DAY BIOMETRIC ENROLLMENT POPUP MODAL */}
+  {/* ========================================================================= */}
+  <Modal
+    visible={showBiometricEnrollModal}
+    transparent
+    animationType="fade"
+    onRequestClose={() => {
+      setShowBiometricEnrollModal(false);
+      setIsAuthenticated(true);
+    }}
+  >
+    <View style={styles.modalOverlay}>
+      <View style={[styles.modalCard, { alignItems: 'center', padding: 24 }]}>
+        <View style={[styles.biometricIconCircle, styles.biometricPulse]}>
+          <Text style={{ fontSize: 44 }}>🪪</Text>
+        </View>
+        <Text style={styles.biometricHeadline}>Enable 30-Day Biometrics?</Text>
+        <Text style={styles.biometricSub}>
+          Enjoy 1-tap Face ID / Touch ID access to your {roleMode === 'THERAPIST' ? 'Clinician Cockpit' : 'Patient Care Portal'} for the next 30 days without typing OTPs or waiting for SMS.
+        </Text>
+
+        <View style={styles.leaseDetailCard}>
+          <View style={styles.leaseDetailRow}>
+            <Text style={styles.leaseDetailLabel}>Verified Profile:</Text>
+            <Text style={styles.leaseDetailValue}>{sessionLease?.userName || patientProfile.fullName}</Text>
+          </View>
+          <View style={styles.leaseDetailRow}>
+            <Text style={styles.leaseDetailLabel}>Assigned Role:</Text>
+            <Text style={[styles.leaseDetailValue, { color: roleMode === 'THERAPIST' ? '#0284c7' : '#0d9488' }]}>
+              {roleMode === 'THERAPIST' ? '🩺 Certified Clinician' : '👤 Patient'}
+            </Text>
+          </View>
+          <View style={styles.leaseDetailRow}>
+            <Text style={styles.leaseDetailLabel}>Lease Validity:</Text>
+            <Text style={[styles.leaseDetailValue, { color: '#16a34a' }]}>30 Days (Renewable via OTP)</Text>
+          </View>
+        </View>
+
+        <TouchableOpacity 
+          style={[styles.authPrimaryBtn, { width: '100%' }]}
+          onPress={handleConfirmBiometricEnrollment}
+        >
+          <Text style={styles.authPrimaryBtnText}>✅ Enable Face ID / Fingerprint Now</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity 
+          style={[styles.authTextBtn, { marginTop: 10 }]}
+          onPress={() => {
+            setShowBiometricEnrollModal(false);
+            setIsAuthenticated(true);
+          }}
+        >
+          <Text style={styles.authTextBtnLabel}>Skip for Now</Text>
+        </TouchableOpacity>
       </View>
     </View>
   </Modal>
@@ -5060,6 +5178,166 @@ const styles = StyleSheet.create({
     height: 8,
     borderRadius: 4,
     backgroundColor: '#0d9488',
+  },
+
+  // 30-DAY BIOMETRIC LEASE STYLES
+  leaseStatusBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f0fdf4',
+    borderWidth: 1.5,
+    borderColor: '#86efac',
+    borderRadius: 14,
+    padding: 12,
+    marginBottom: 16,
+  },
+  leaseStatusIcon: {
+    fontSize: 22,
+  },
+  leaseStatusTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#15803d',
+  },
+  leaseStatusSubtitle: {
+    fontSize: 11,
+    color: '#166534',
+    marginTop: 2,
+    lineHeight: 16,
+  },
+  simulateExpireBtn: {
+    alignItems: 'center',
+    paddingVertical: 10,
+    marginTop: 10,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    borderRadius: 10,
+    backgroundColor: '#f8fafc',
+  },
+  simulateExpireBtnText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#94a3b8',
+  },
+  expiredAlertBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fffbeb',
+    borderWidth: 1.5,
+    borderColor: '#fde68a',
+    borderRadius: 14,
+    padding: 12,
+    marginBottom: 16,
+  },
+  expiredAlertIcon: {
+    fontSize: 22,
+  },
+  expiredAlertTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#b45309',
+  },
+  expiredAlertSub: {
+    fontSize: 11,
+    color: '#92400e',
+    marginTop: 2,
+    lineHeight: 16,
+  },
+  restoreLeaseBtn: {
+    backgroundColor: '#f59e0b',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    marginLeft: 6,
+  },
+  restoreLeaseBtnText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#ffffff',
+  },
+  authPatientTag: {
+    backgroundColor: '#ccfbf1',
+    borderWidth: 1,
+    borderColor: '#99f6e4',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  authPatientTagText: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#0f766e',
+  },
+  headerRightRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  activeRoleTag: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  patientRoleTag: {
+    backgroundColor: '#f0fdfa',
+    borderColor: '#99f6e4',
+  },
+  patientRoleTagText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#0f766e',
+  },
+  therapistRoleTag: {
+    backgroundColor: '#f0f9ff',
+    borderColor: '#bae6fd',
+  },
+  therapistRoleTagText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#0284c7',
+  },
+  activeRoleTagText: {
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  leasePill: {
+    backgroundColor: '#f1f5f9',
+    borderRadius: 8,
+    paddingHorizontal: 7,
+    paddingVertical: 4,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  leasePillText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#475569',
+  },
+  leaseDetailCard: {
+    width: '100%',
+    backgroundColor: '#f8fafc',
+    borderRadius: 14,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    marginBottom: 18,
+    gap: 8,
+  },
+  leaseDetailRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  leaseDetailLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#64748b',
+  },
+  leaseDetailValue: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#0f172a',
   },
 });
 

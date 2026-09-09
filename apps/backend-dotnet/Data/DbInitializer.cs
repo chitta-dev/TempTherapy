@@ -14,8 +14,48 @@ public static class DbInitializer
             if (admin != null && admin.Email != "admin@therapyhub.health")
             {
                 admin.Email = "admin@therapyhub.health";
-                context.SaveChanges();
             }
+
+            var jenkins = context.Users.FirstOrDefault(u => u.Role == UserRole.Therapist);
+            if (jenkins == null)
+            {
+                jenkins = new User
+                {
+                    Id = "usr_pt_jenkins",
+                    Role = UserRole.Therapist,
+                    FullName = "Dr. Sarah Jenkins, PT, DPT",
+                    Email = "sarah.jenkins@therapyhub.health",
+                    PhoneNumber = "+91 98765 00001",
+                    PasswordHash = "password@1234",
+                    BloodGroup = "A+",
+                    CreatedAt = DateTime.UtcNow
+                };
+                context.Users.Add(jenkins);
+
+                if (!context.TherapistProfiles.Any(t => t.UserId == jenkins.Id))
+                {
+                    context.TherapistProfiles.Add(new TherapistProfile
+                    {
+                        Id = "pt_jenkins_1",
+                        UserId = jenkins.Id,
+                        LicenseNumber = "KA-PT-048291",
+                        SpecializationsJson = "[\"Orthopedic & Musculoskeletal\", \"Sports Injury & Return-to-Play\", \"Post-Surgical Rehabilitation\"]",
+                        ExperienceYears = 8,
+                        Rating = 4.9,
+                        ReviewCount = 128,
+                        IsAvailable = true,
+                        CurrentLatitude = 12.9716,
+                        CurrentLongitude = 77.5946,
+                        ServiceRadiusKm = 15.0
+                    });
+                }
+            }
+            else if (string.IsNullOrWhiteSpace(jenkins.PhoneNumber) || jenkins.PhoneNumber.StartsWith("+1"))
+            {
+                jenkins.PhoneNumber = "+91 98765 00001";
+            }
+
+            context.SaveChanges();
             return; // DB has already been seeded
         }
 
