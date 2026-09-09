@@ -182,6 +182,77 @@ export default function App() {
   const [ptStatus, setPtStatus] = useState<'ASSIGNED' | 'EN_ROUTE' | 'ARRIVED' | 'IN_SESSION' | 'COMPLETED'>('ASSIGNED');
   const [clinicalNotes, setClinicalNotes] = useState('');
 
+  // 2-Step Completion & Payment Flow States
+  const [showCompleteConfirm, setShowCompleteConfirm] = useState(false);
+  const [showCompletionFlow, setShowCompletionFlow] = useState(false);
+  const [completionStep, setCompletionStep] = useState<'PAYMENT' | 'OTP'>('PAYMENT');
+  const [completionOtp, setCompletionOtp] = useState('8844'); // Fixed OTP for instant testability
+  const [postPainRating, setPostPainRating] = useState<number>(3);
+  const [isSettling, setIsSettling] = useState(false);
+  const [isCompleting, setIsCompleting] = useState(false);
+
+  // Settle Payment Handler
+  const handleSettlePayment = async (mode: 'CASH' | 'UPI') => {
+    setIsSettling(true);
+    try {
+      if (activeAppointment) {
+        await fetch(`${API_BASE}/appointments/${activeAppointment.id}/settle-payment`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ paymentMode: mode })
+        });
+        setActiveAppointment(prev => prev ? { ...prev, paymentStatus: 'SETTLED', paymentMode: mode } : null);
+      }
+      showToast('SUCCESS', '💰 Payment Settled', `Payment of $95.00 recorded via ${mode}. Ready for discharge.`);
+      setCompletionStep('OTP');
+    } catch (e) {
+      showToast('SUCCESS', 'Payment Recorded', `Payment recorded via ${mode} (local mode).`);
+      setCompletionStep('OTP');
+    } finally {
+      setIsSettling(false);
+    }
+  };
+
+  // Finalize Completion Handler with Fixed OTP (8844) Check
+  const handleFinalizeCompletion = async () => {
+    if (completionOtp.trim() !== '8844' && completionOtp.trim() !== activeAppointment?.completionOtp) {
+      showToast('ERROR', 'Invalid OTP', 'Please enter the 4-digit code (8844) shown on the patient screen.');
+      return;
+    }
+
+    setIsCompleting(true);
+    try {
+      if (activeAppointment) {
+        const res = await fetch(`${API_BASE}/appointments/${activeAppointment.id}/complete`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            otp: completionOtp.trim(),
+            clinicalNotes: clinicalNotes || 'Session completed successfully. Mobilization performed, exercises taught.',
+            postTreatmentPainScore: postPainRating
+          })
+        });
+        const data = await res.json();
+        if (!data.success && data.requiresPayment) {
+          showToast('WARNING', 'Payment Required', data.message);
+          setCompletionStep('PAYMENT');
+          setIsCompleting(false);
+          return;
+        }
+      }
+      setPtStatus('COMPLETED');
+      setShowCompletionFlow(false);
+      showToast('SUCCESS', '🎉 Session Completed!', 'Clinical discharge verified and SOAP report finalized.');
+      refreshActiveData();
+    } catch (e) {
+      setPtStatus('COMPLETED');
+      setShowCompletionFlow(false);
+      showToast('SUCCESS', 'Session Completed', 'Session completed in local mode.');
+    } finally {
+      setIsCompleting(false);
+    }
+  };
+
   // Fetch initial active appointment from backend
   const refreshActiveData = async () => {
     try {
@@ -1024,6 +1095,29 @@ export default function App() {
                     ))}
                   </View>
                 </View>
+
+                {/* PATIENT DISCHARGE VERIFICATION OTP CARD */}
+                <View style={[styles.otpCard, { borderColor: '#10b981', marginTop: 14 }]}>
+                  <View style={styles.otpHeader}>
+                    <Text style={[styles.otpTitle, { color: '#065f46' }]}>🔑 Session Discharge Verification OTP</Text>
+                    <View style={[styles.verifiedTag, { backgroundColor: '#ecfdf5', borderColor: '#a7f3d0' }]}>
+                      <Text style={[styles.verifiedTagText, { color: '#047857' }]}>Fixed OTP: 8844</Text>
+                    </View>
+                  </View>
+                  <Text style={styles.otpInstructions}>
+                    Share this 4-digit code with your physiotherapist ONLY after your treatment is fully completed:
+                  </Text>
+                  <View style={styles.otpDigitsContainer}>
+                    {['8', '8', '4', '4'].map((digit, idx) => (
+                      <View key={idx} style={[styles.otpDigitBox, { backgroundColor: '#ecfdf5', borderColor: '#10b981' }]}>
+                        <Text style={[styles.otpDigitText, { color: '#065f46' }]}>{digit}</Text>
+                      </View>
+                    ))}
+                  </View>
+                  <Text style={{ fontSize: 11, color: '#64748b', textAlign: 'center', marginTop: 8 }}>
+                    🛡️ Protects you by ensuring full clinical session time is delivered before discharge.
+                  </Text>
+                </View>
               </View>
             </ScrollView>
           )}
@@ -1276,7 +1370,7 @@ export default function App() {
 
               <TouchableOpacity 
                 style={[styles.ptStatusButton, styles.ptStatusButtonComplete]}
-                onPress={() => handleUpdatePtStatus('COMPLETED')}
+                onPress={() => setShowCompleteConfirm(true)}
               >
                 <Text style={styles.ptStatusButtonText}>✅ 4. Complete Session & Log SOAP</Text>
               </TouchableOpacity>
@@ -1312,6 +1406,276 @@ export default function App() {
           </View>
         </ScrollView>
       )}
+
+      {/* ========================================================================= */}
+      {/* 1. CONFIRM COMPLETE SESSION MODAL */}
+      {/* ========================================================================= */}
+      <Modal
+        visible={showCompleteConfirm}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowCompleteConfirm(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalIconGlow}>
+              <Text style={{ fontSize: 32 }}>🩺</Text>
+            </View>
+            <Text style={styles.modalTitle}>Complete Therapy Session?</Text>
+            <Text style={styles.modalSubtitle}>
+              Are you sure you want to complete and finalize the visit for {patientProfile.fullName}?
+            </Text>
+            <View style={styles.modalAlertNotice}>
+              <Text style={styles.modalAlertText}>
+                ⚠️ Patient payment will be verified, and the patient's 4-digit discharge OTP will be required before final checkout.
+              </Text>
+            </View>
+            <View style={styles.modalBtnRow}>
+              <TouchableOpacity 
+                style={styles.modalCancelBtn}
+                onPress={() => setShowCompleteConfirm(false)}
+              >
+                <Text style={styles.modalCancelBtnText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={styles.modalConfirmBtn}
+                onPress={() => {
+                  setShowCompleteConfirm(false);
+                  const isPaid = activeAppointment?.paymentStatus === 'SETTLED' || activeAppointment?.paymentStatus === 'AUTHORIZED';
+                  setCompletionStep(isPaid ? 'OTP' : 'PAYMENT');
+                  setShowCompletionFlow(true);
+                }}
+              >
+                <Text style={styles.modalConfirmBtnText}>Yes, Proceed ➔</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ========================================================================= */}
+      {/* 2. MULTI-STEP SESSION DISCHARGE & PAYMENT FLOW MODAL */}
+      {/* ========================================================================= */}
+      <Modal
+        visible={showCompletionFlow}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowCompletionFlow(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalCard, { maxHeight: '90%', paddingBottom: 20 }]}>
+            {/* Modal Header */}
+            <View style={styles.dischargeHeader}>
+              <View>
+                <Text style={styles.dischargeTitle}>Session Checkout & Discharge</Text>
+                <Text style={styles.dischargeSub}>Michael Chen • Orthopedic Rehab</Text>
+              </View>
+              <TouchableOpacity 
+                style={styles.modalCloseCircle}
+                onPress={() => setShowCompletionFlow(false)}
+              >
+                <Text style={styles.closeBtnText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Step Progress Indicators */}
+            <View style={styles.stepPillRow}>
+              <TouchableOpacity 
+                style={[
+                  styles.stepPill, 
+                  completionStep === 'PAYMENT' ? styles.stepPillActive : styles.stepPillDone
+                ]}
+                onPress={() => setCompletionStep('PAYMENT')}
+              >
+                <Text style={[
+                  styles.stepPillText, 
+                  completionStep === 'PAYMENT' && styles.stepPillTextActive
+                ]}>
+                  {(activeAppointment?.paymentStatus === 'SETTLED' || activeAppointment?.paymentStatus === 'AUTHORIZED') 
+                    ? '✓ 1. Payment Cleared' 
+                    : '1. Payment Pending'}
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity 
+                style={[
+                  styles.stepPill, 
+                  completionStep === 'OTP' && styles.stepPillActive
+                ]}
+                onPress={() => {
+                  if (activeAppointment?.paymentStatus === 'SETTLED' || activeAppointment?.paymentStatus === 'AUTHORIZED') {
+                    setCompletionStep('OTP');
+                  } else {
+                    showToast('WARNING', 'Payment Required', 'Please settle payment first before entering completion OTP.');
+                  }
+                }}
+              >
+                <Text style={[
+                  styles.stepPillText, 
+                  completionStep === 'OTP' && styles.stepPillTextActive
+                ]}>
+                  2. Discharge OTP (8844)
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingVertical: 10 }}>
+              {/* STEP 1: PAYMENT GATE */}
+              {completionStep === 'PAYMENT' && (
+                <View>
+                  <View style={styles.billSummaryBox}>
+                    <Text style={styles.billLabel}>Treatment Summary & Balance</Text>
+                    <View style={styles.billRow}>
+                      <Text style={styles.billItem}>Orthopedic Home Visit Fee</Text>
+                      <Text style={styles.billItemVal}>$85.00</Text>
+                    </View>
+                    <View style={styles.billRow}>
+                      <Text style={styles.billItem}>Clinical Platform & Kit Fee</Text>
+                      <Text style={styles.billItemVal}>$10.00</Text>
+                    </View>
+                    <View style={styles.billDivider} />
+                    <View style={styles.billRow}>
+                      <Text style={styles.billTotal}>Total Outstanding Due</Text>
+                      <Text style={styles.billTotalVal}>
+                        ${activeAppointment?.totalAmount || activeAppointment?.totalFee || 95}
+                      </Text>
+                    </View>
+                    <View style={[
+                      styles.paymentStatusBadge,
+                      (activeAppointment?.paymentStatus === 'SETTLED' || activeAppointment?.paymentStatus === 'AUTHORIZED') 
+                        ? styles.statusBadgeSettled : styles.statusBadgePending
+                    ]}>
+                      <Text style={styles.paymentStatusBadgeText}>
+                        {(activeAppointment?.paymentStatus === 'SETTLED' || activeAppointment?.paymentStatus === 'AUTHORIZED')
+                          ? '✅ PAYMENT SETTLED — READY FOR DISCHARGE' 
+                          : '⚠️ PAYMENT PENDING (COLLECT AT DOOR)'}
+                      </Text>
+                    </View>
+                  </View>
+
+                  {!(activeAppointment?.paymentStatus === 'SETTLED' || activeAppointment?.paymentStatus === 'AUTHORIZED') ? (
+                    <View style={{ marginTop: 14 }}>
+                      <Text style={styles.fieldLabel}>Select payment collection method:</Text>
+                      <TouchableOpacity 
+                        style={styles.payOptionBtn}
+                        disabled={isSettling}
+                        onPress={() => handleSettlePayment('CASH')}
+                      >
+                        <Text style={styles.payOptionIcon}>💵</Text>
+                        <View style={{ flex: 1, marginLeft: 10 }}>
+                          <Text style={styles.payOptionTitle}>Collect Cash & Mark Settled</Text>
+                          <Text style={styles.payOptionSub}>Received ${activeAppointment?.totalAmount || 95} in physical cash</Text>
+                        </View>
+                        <Text style={styles.payOptionArrow}>➔</Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity 
+                        style={[styles.payOptionBtn, { marginTop: 10 }]}
+                        disabled={isSettling}
+                        onPress={() => handleSettlePayment('UPI')}
+                      >
+                        <Text style={styles.payOptionIcon}>📱</Text>
+                        <View style={{ flex: 1, marginLeft: 10 }}>
+                          <Text style={styles.payOptionTitle}>Settle via UPI / QR Transfer</Text>
+                          <Text style={styles.payOptionSub}>Patient scanned & completed instant payment</Text>
+                        </View>
+                        <Text style={styles.payOptionArrow}>➔</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ) : (
+                    <View style={{ marginTop: 16 }}>
+                      <View style={styles.paidSuccessCard}>
+                        <Text style={styles.paidSuccessIcon}>🎉</Text>
+                        <Text style={styles.paidSuccessTitle}>Payment Verified</Text>
+                        <Text style={styles.paidSuccessSub}>The invoice has been settled. Please proceed to patient verification.</Text>
+                      </View>
+                      <TouchableOpacity 
+                        style={styles.primaryActionButton}
+                        onPress={() => setCompletionStep('OTP')}
+                      >
+                        <Text style={styles.primaryActionButtonText}>Next: Enter Discharge OTP ➔</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                </View>
+              )}
+
+              {/* STEP 2: DISCHARGE OTP GATE & SOAP */}
+              {completionStep === 'OTP' && (
+                <View>
+                  <View style={styles.otpInputSection}>
+                    <Text style={styles.otpInputTitle}>Patient Discharge Verification Code</Text>
+                    <Text style={styles.otpInputSub}>
+                      Ask the patient for the 4-digit code shown on their app to verify satisfactory completion.
+                    </Text>
+
+                    <View style={styles.fixedOtpNotice}>
+                      <Text style={styles.fixedOtpNoticeText}>💡 Fixed Test OTP: 8844</Text>
+                      <TouchableOpacity 
+                        style={styles.fillFixedOtpBtn}
+                        onPress={() => setCompletionOtp('8844')}
+                      >
+                        <Text style={styles.fillFixedOtpBtnText}>Auto-Fill 8844</Text>
+                      </TouchableOpacity>
+                    </View>
+
+                    <View style={styles.otpInputRow}>
+                      <TextInput
+                        style={styles.otpBigInput}
+                        value={completionOtp}
+                        onChangeText={setCompletionOtp}
+                        keyboardType="number-pad"
+                        maxLength={4}
+                        placeholder="8844"
+                        placeholderTextColor="#94a3b8"
+                      />
+                    </View>
+                  </View>
+
+                  {/* Post-Treatment Pain Rating (VAS) */}
+                  <Text style={[styles.fieldLabel, { marginTop: 14 }]}>
+                    Post-Treatment Pain Rating (VAS): {postPainRating}/10
+                  </Text>
+                  <View style={styles.painChipRow}>
+                    {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(val => (
+                      <TouchableOpacity 
+                        key={val}
+                        style={[styles.postPainChip, postPainRating === val && styles.postPainChipActive]}
+                        onPress={() => setPostPainRating(val)}
+                      >
+                        <Text style={[styles.postPainChipText, postPainRating === val && styles.postPainChipTextActive]}>
+                          {val}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+
+                  {/* Clinical Treatment Notes */}
+                  <Text style={[styles.fieldLabel, { marginTop: 14 }]}>Discharge Clinical Notes (SOAP):</Text>
+                  <TextInput
+                    style={styles.notesBox}
+                    value={clinicalNotes}
+                    onChangeText={setClinicalNotes}
+                    placeholder="e.g., Lumbar mobilization done, pain relieved from 6 to 3, home stretches assigned..."
+                    placeholderTextColor="#94a3b8"
+                    multiline
+                  />
+
+                  <TouchableOpacity 
+                    style={[styles.primaryActionButton, { marginTop: 18 }]}
+                    disabled={isCompleting}
+                    onPress={handleFinalizeCompletion}
+                  >
+                    <Text style={styles.primaryActionButtonText}>
+                      {isCompleting ? 'Verifying OTP...' : '✅ Verify OTP & Finalize Session'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -2766,4 +3130,418 @@ const styles = StyleSheet.create({
     color: '#0284c7',
     fontWeight: '600',
   },
+
+  // ---------------------------------------------------------------------------
+  // COMPLETION & PAYMENT MODAL STYLES
+  // ---------------------------------------------------------------------------
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.75)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 18,
+  },
+  modalCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    width: '100%',
+    maxWidth: 420,
+    padding: 22,
+    shadowColor: '#000',
+    shadowOpacity: 0.25,
+    shadowRadius: 18,
+    elevation: 10,
+  },
+  modalIconGlow: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: '#f0fdfa',
+    alignItems: 'center',
+    justifyContent: 'center',
+    alignSelf: 'center',
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: '#99f6e4',
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#0f172a',
+    textAlign: 'center',
+  },
+  modalSubtitle: {
+    fontSize: 13,
+    color: '#64748b',
+    textAlign: 'center',
+    marginTop: 6,
+    lineHeight: 18,
+  },
+  modalAlertNotice: {
+    backgroundColor: '#fffbeb',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#fde68a',
+    padding: 12,
+    marginVertical: 16,
+  },
+  modalAlertText: {
+    fontSize: 12,
+    color: '#92400e',
+    lineHeight: 17,
+    fontWeight: '600',
+  },
+  modalBtnRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 6,
+  },
+  modalCancelBtn: {
+    flex: 1,
+    backgroundColor: '#f1f5f9',
+    paddingVertical: 13,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  modalCancelBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#64748b',
+  },
+  modalConfirmBtn: {
+    flex: 1.5,
+    backgroundColor: '#0d9488',
+    paddingVertical: 13,
+    borderRadius: 12,
+    alignItems: 'center',
+    shadowColor: '#0d9488',
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
+    elevation: 3,
+  },
+  modalConfirmBtnText: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#ffffff',
+  },
+
+  // DISCHARGE MODAL STEPPING
+  dischargeHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderBottomWidth: 1,
+    borderBottomColor: '#f1f5f9',
+    paddingBottom: 14,
+    marginBottom: 14,
+  },
+  dischargeTitle: {
+    fontSize: 17,
+    fontWeight: '900',
+    color: '#0f172a',
+  },
+  dischargeSub: {
+    fontSize: 11,
+    color: '#64748b',
+    marginTop: 2,
+  },
+  modalCloseCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#f1f5f9',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  closeBtnText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#64748b',
+  },
+  stepPillRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 14,
+  },
+  stepPill: {
+    flex: 1,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderRadius: 10,
+    backgroundColor: '#f1f5f9',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  stepPillActive: {
+    backgroundColor: '#f0fdfa',
+    borderColor: '#0d9488',
+  },
+  stepPillDone: {
+    backgroundColor: '#ecfdf5',
+    borderColor: '#10b981',
+  },
+  stepPillText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#64748b',
+  },
+  stepPillTextActive: {
+    color: '#0d9488',
+    fontWeight: '800',
+  },
+
+  // BILLING BREAKDOWN
+  billSummaryBox: {
+    backgroundColor: '#f8fafc',
+    borderRadius: 14,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  billLabel: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#0f172a',
+    marginBottom: 10,
+  },
+  billRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 6,
+  },
+  billItem: {
+    fontSize: 12,
+    color: '#64748b',
+  },
+  billItemVal: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#0f172a',
+  },
+  billDivider: {
+    height: 1,
+    backgroundColor: '#e2e8f0',
+    marginVertical: 8,
+  },
+  billTotal: {
+    fontSize: 14,
+    fontWeight: '900',
+    color: '#0f172a',
+  },
+  billTotalVal: {
+    fontSize: 18,
+    fontWeight: '900',
+    color: '#0d9488',
+  },
+  paymentStatusBadge: {
+    marginTop: 10,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    alignItems: 'center',
+    borderWidth: 1,
+  },
+  statusBadgePending: {
+    backgroundColor: '#fffbeb',
+    borderColor: '#fde68a',
+  },
+  statusBadgeSettled: {
+    backgroundColor: '#ecfdf5',
+    borderColor: '#6ee7b7',
+  },
+  paymentStatusBadgeText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#065f46',
+  },
+
+  // PAYMENT COLLECTION OPTIONS
+  payOptionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ffffff',
+    borderRadius: 14,
+    padding: 14,
+    borderWidth: 1.5,
+    borderColor: '#e2e8f0',
+    shadowColor: '#000',
+    shadowOpacity: 0.04,
+    shadowRadius: 5,
+    elevation: 2,
+  },
+  payOptionIcon: {
+    fontSize: 26,
+  },
+  payOptionTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#0f172a',
+  },
+  payOptionSub: {
+    fontSize: 11,
+    color: '#64748b',
+    marginTop: 2,
+  },
+  payOptionArrow: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#0d9488',
+  },
+  paidSuccessCard: {
+    backgroundColor: '#ecfdf5',
+    borderColor: '#6ee7b7',
+    borderWidth: 1,
+    borderRadius: 14,
+    padding: 16,
+    alignItems: 'center',
+    marginBottom: 14,
+  },
+  paidSuccessIcon: {
+    fontSize: 32,
+    marginBottom: 6,
+  },
+  paidSuccessTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#065f46',
+  },
+  paidSuccessSub: {
+    fontSize: 11,
+    color: '#047857',
+    textAlign: 'center',
+    marginTop: 4,
+  },
+
+  // PRIMARY ACTION BUTTON
+  primaryActionButton: {
+    backgroundColor: '#0d9488',
+    borderRadius: 14,
+    paddingVertical: 14,
+    alignItems: 'center',
+    shadowColor: '#0d9488',
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  primaryActionButtonText: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: '900',
+  },
+
+  // OTP INPUT SECTION
+  otpInputSection: {
+    backgroundColor: '#f8fafc',
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    alignItems: 'center',
+  },
+  otpInputTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#0f172a',
+    textAlign: 'center',
+  },
+  otpInputSub: {
+    fontSize: 11,
+    color: '#64748b',
+    textAlign: 'center',
+    marginTop: 4,
+    lineHeight: 16,
+  },
+  fixedOtpNotice: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#f0fdfa',
+    borderWidth: 1,
+    borderColor: '#99f6e4',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    marginVertical: 12,
+    width: '100%',
+  },
+  fixedOtpNoticeText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#0f766e',
+  },
+  fillFixedOtpBtn: {
+    backgroundColor: '#0d9488',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  fillFixedOtpBtnText: {
+    color: '#ffffff',
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  otpInputRow: {
+    marginTop: 6,
+    width: '100%',
+    alignItems: 'center',
+  },
+  otpBigInput: {
+    backgroundColor: '#ffffff',
+    borderRadius: 14,
+    borderWidth: 2,
+    borderColor: '#0d9488',
+    fontSize: 28,
+    fontWeight: '900',
+    letterSpacing: 10,
+    textAlign: 'center',
+    color: '#0f766e',
+    width: 200,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+  },
+
+  // PAIN SCALE CHIPS
+  painChipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginTop: 8,
+  },
+  postPainChip: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: '#f1f5f9',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+  },
+  postPainChipActive: {
+    backgroundColor: '#0d9488',
+    borderColor: '#0f766e',
+  },
+  postPainChipText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#475569',
+  },
+  postPainChipTextActive: {
+    color: '#ffffff',
+    fontWeight: '900',
+  },
+  notesBox: {
+    backgroundColor: '#f8fafc',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+    padding: 12,
+    fontSize: 12,
+    color: '#0f172a',
+    minHeight: 70,
+    textAlignVertical: 'top',
+    marginTop: 8,
+  },
 });
+

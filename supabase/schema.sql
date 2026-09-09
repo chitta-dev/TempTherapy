@@ -102,6 +102,7 @@ CREATE TABLE IF NOT EXISTS appointments (
     scheduled_start TIMESTAMPTZ NOT NULL,
     scheduled_end TIMESTAMPTZ NOT NULL,
     arrival_otp VARCHAR(10) NOT NULL,
+    completion_otp VARCHAR(10) NOT NULL DEFAULT '8844',
     
     -- Financial Breakdown
     base_fee NUMERIC(10, 2) NOT NULL DEFAULT 85.00,
@@ -180,6 +181,47 @@ BEGIN
         );
     ELSE
         RETURN jsonb_build_object('success', false, 'message', 'Invalid OTP code.');
+    END IF;
+END;
+$$ LANGUAGE plpgsql;
+
+-- 12. HELPER FUNCTION: VERIFY COMPLETION OTP & PAYMENT GATE
+CREATE OR REPLACE FUNCTION verify_completion_otp(
+    p_appointment_id VARCHAR,
+    p_otp VARCHAR,
+    p_notes TEXT DEFAULT NULL
+) RETURNS JSONB AS $$
+DECLARE
+    v_apt appointments%ROWTYPE;
+BEGIN
+    SELECT * INTO v_apt FROM appointments WHERE id = p_appointment_id;
+    IF NOT FOUND THEN
+        RETURN jsonb_build_object('success', false, 'message', 'Appointment not found');
+    END IF;
+
+    -- Gate 1: Check Payment Status
+    IF v_apt.payment_status != 'SETTLED' AND v_apt.payment_status != 'AUTHORIZED' THEN
+        RETURN jsonb_build_object(
+            'success', false, 
+            'requires_payment', true,
+            'message', 'Payment is pending. Please collect payment before completing session.'
+        );
+    END IF;
+
+    -- Gate 2: Check Completion OTP (Fixed OTP 8844 or stored completion_otp)
+    IF trim(p_otp) = v_apt.completion_otp OR trim(p_otp) = '8844' THEN
+        UPDATE appointments 
+        SET status = 'COMPLETED',
+            clinical_notes = COALESCE(p_notes, clinical_notes)
+        WHERE id = p_appointment_id;
+        
+        RETURN jsonb_build_object(
+            'success', true, 
+            'message', 'Completion OTP verified. Session marked as COMPLETED.', 
+            'status', 'COMPLETED'
+        );
+    ELSE
+        RETURN jsonb_build_object('success', false, 'message', 'Invalid Completion OTP. Please check code with patient.');
     END IF;
 END;
 $$ LANGUAGE plpgsql;

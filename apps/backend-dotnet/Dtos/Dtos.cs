@@ -33,6 +33,17 @@ public record VerifyOtpDto(
     string Otp
 );
 
+public record SettlePaymentDto(
+    string? PaymentMode,
+    decimal? AmountPaid
+);
+
+public record CompleteSessionDto(
+    string Otp,
+    string? ClinicalNotes,
+    int? PostTreatmentPainScore
+);
+
 public record PatientProfileDto(
     string FullName,
     string PhoneNumber,

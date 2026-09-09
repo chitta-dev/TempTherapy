@@ -35,6 +35,9 @@ public class Appointment
     [MaxLength(10)]
     public string ArrivalOtp { get; set; } = "4829";
 
+    [MaxLength(10)]
+    public string CompletionOtp { get; set; } = "8844";
+
     // Itemized Financial Fee Breakdown
     public decimal BaseFee { get; set; }
     public decimal DistanceTierFee { get; set; }

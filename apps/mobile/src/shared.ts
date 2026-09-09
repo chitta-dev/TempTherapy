@@ -21,13 +21,19 @@ export type PaymentMode =
   | 'UPI' 
   | 'APPLE_PAY' 
   | 'GOOGLE_PAY' 
-  | 'CASH_ON_SERVICE';
+  | 'CASH_ON_SERVICE'
+  | 'CARD'
+  | 'CASH'
+  | 'INSURANCE_COPAY';
 
 export type PaymentStatus = 
   | 'PENDING' 
   | 'PAID_ONLINE' 
   | 'CASH_COLLECTED' 
-  | 'REFUNDED';
+  | 'REFUNDED'
+  | 'SETTLED'
+  | 'AUTHORIZED'
+  | 'FAILED';
 
 export type TherapistSeniority = 'JUNIOR' | 'SENIOR' | 'MASTER_CONSULTANT';
 
@@ -126,6 +132,7 @@ export interface Appointment {
   senioritySurcharge: number;
   discountAmount: number;
   totalAmount: number;
+  totalFee?: number;
   paymentMode: PaymentMode;
   paymentStatus: PaymentStatus;
   
@@ -134,6 +141,8 @@ export interface Appointment {
   therapistArrivedAt?: string;
   sessionStartedAt?: string;
   sessionCompletedAt?: string;
+  arrivalOtp?: string;
+  completionOtp?: string;
   cashConfirmationOtp?: string;
   clinicalNotes?: string;
   prescribedExercises?: string[];

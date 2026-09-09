@@ -236,6 +236,123 @@ public class AppointmentsController : ControllerBase
         return BadRequest(new { verified = false, message = "Invalid arrival OTP. Please confirm the 4-digit code shown on the patient's device." });
     }
 
+    [HttpPost("{id}/settle-payment")]
+    public async Task<IActionResult> SettlePayment(string id, [FromBody] SettlePaymentDto? dto)
+    {
+        var appointment = await _context.Appointments
+            .Include(a => a.Patient)
+            .FirstOrDefaultAsync(a => a.Id == id);
+
+        if (appointment == null)
+        {
+            return NotFound(new { message = $"Appointment with ID '{id}' not found." });
+        }
+
+        appointment.PaymentStatus = PaymentStatus.SETTLED;
+        if (!string.IsNullOrWhiteSpace(dto?.PaymentMode) && Enum.TryParse<PaymentMode>(dto.PaymentMode, true, out var mode))
+        {
+            appointment.PaymentMode = mode;
+        }
+
+        await _context.SaveChangesAsync();
+        _logger.LogInformation("Appointment {AppointmentId} payment settled via {Mode}", appointment.Id, appointment.PaymentMode);
+
+        var payload = new
+        {
+            appointmentId = appointment.Id,
+            paymentStatus = PaymentStatus.SETTLED.ToString(),
+            paymentMode = appointment.PaymentMode.ToString(),
+            totalFee = appointment.TotalFee,
+            settledAt = DateTime.UtcNow
+        };
+
+        await _hubContext.Clients.Group("dispatch_desk").SendAsync("ReceivePaymentSettled", payload);
+        await _hubContext.Clients.Group($"patient_{appointment.PatientId}").SendAsync("ReceivePaymentSettled", payload);
+        await _hubContext.Clients.Group($"appointment_{appointment.Id}").SendAsync("ReceivePaymentSettled", payload);
+
+        return Ok(new { success = true, message = "Payment successfully settled.", appointment });
+    }
+
+    [HttpPost("{id}/complete")]
+    public async Task<IActionResult> CompleteAppointment(string id, [FromBody] CompleteSessionDto dto)
+    {
+        var appointment = await _context.Appointments
+            .Include(a => a.Patient)
+            .Include(a => a.Request)
+            .Include(a => a.Therapist)
+                .ThenInclude(t => t!.User)
+            .FirstOrDefaultAsync(a => a.Id == id);
+
+        if (appointment == null)
+        {
+            return NotFound(new { message = $"Appointment with ID '{id}' not found." });
+        }
+
+        // Gate 1: Payment Check
+        if (appointment.PaymentStatus != PaymentStatus.SETTLED && appointment.PaymentStatus != PaymentStatus.AUTHORIZED)
+        {
+            return BadRequest(new 
+            { 
+                success = false, 
+                requiresPayment = true,
+                message = $"Payment of ${appointment.TotalFee:F2} is pending. Please collect and settle payment before completing session." 
+            });
+        }
+
+        // Gate 2: Completion OTP Check (Accepts appointment.CompletionOtp or fixed '8844')
+        var submittedOtp = dto.Otp?.Trim();
+        bool isOtpValid = string.Equals(appointment.CompletionOtp, submittedOtp, StringComparison.OrdinalIgnoreCase) ||
+                          string.Equals("8844", submittedOtp, StringComparison.OrdinalIgnoreCase);
+
+        if (!isOtpValid)
+        {
+            return BadRequest(new 
+            { 
+                success = false, 
+                requiresOtp = true,
+                message = "Invalid Completion OTP. Please ask the patient for their 4-digit discharge verification code." 
+            });
+        }
+
+        // Complete Session
+        appointment.Status = AppointmentStatus.COMPLETED;
+        if (!string.IsNullOrWhiteSpace(dto.ClinicalNotes))
+        {
+            appointment.ClinicalNotes = string.IsNullOrWhiteSpace(appointment.ClinicalNotes)
+                ? dto.ClinicalNotes
+                : $"{appointment.ClinicalNotes}\n[Discharge {DateTime.UtcNow:HH:mm}] {dto.ClinicalNotes}";
+        }
+
+        if (dto.PostTreatmentPainScore.HasValue)
+        {
+            appointment.ClinicalNotes += $"\n[Post-Treatment VAS Pain Score: {dto.PostTreatmentPainScore.Value}/10]";
+        }
+
+        await _context.SaveChangesAsync();
+        _logger.LogInformation("Appointment {AppointmentId} successfully completed with OTP verification", appointment.Id);
+
+        var statusPayload = new 
+        {
+            appointmentId = appointment.Id,
+            status = AppointmentStatus.COMPLETED.ToString(),
+            clinicalNotes = appointment.ClinicalNotes,
+            paymentStatus = appointment.PaymentStatus.ToString(),
+            updatedAt = DateTime.UtcNow,
+            completed = true
+        };
+
+        await _hubContext.Clients.Group("dispatch_desk").SendAsync("ReceiveVisitStatusUpdated", statusPayload);
+        await _hubContext.Clients.Group($"patient_{appointment.PatientId}").SendAsync("ReceiveVisitStatusUpdated", statusPayload);
+        await _hubContext.Clients.Group($"appointment_{appointment.Id}").SendAsync("ReceiveVisitStatusUpdated", statusPayload);
+
+        return Ok(new 
+        { 
+            success = true, 
+            message = "Session successfully completed and verified!", 
+            appointment 
+        });
+    }
+
     private static double CalculateDistanceKm(double lat1, double lon1, double lat2, double lon2)
     {
         const double R = 6371.0; // Earth radius in km
