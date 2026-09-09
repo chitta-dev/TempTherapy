@@ -14,15 +14,18 @@ namespace TherapyCare.Api.Controllers;
 public class RequestsController : ControllerBase
 {
     private readonly TherapyDbContext _context;
+    private readonly PricingService _pricingService;
     private readonly IHubContext<TherapyHub> _hubContext;
     private readonly ILogger<RequestsController> _logger;
 
     public RequestsController(
         TherapyDbContext context, 
+        PricingService pricingService,
         IHubContext<TherapyHub> hubContext,
         ILogger<RequestsController> logger)
     {
         _context = context;
+        _pricingService = pricingService;
         _hubContext = hubContext;
         _logger = logger;
     }
@@ -145,6 +148,48 @@ public class RequestsController : ControllerBase
             urgency = parsedUrgency;
         }
 
+        TherapistProfile? therapist = null;
+        DateTime startTime = DateTime.UtcNow.AddMinutes(30);
+        DateTime endTime = startTime.AddMinutes(category.EstimatedDurationMinutes);
+
+        if (!string.IsNullOrWhiteSpace(dto.TherapistId))
+        {
+            therapist = await _context.TherapistProfiles
+                .Include(t => t.User)
+                .FirstOrDefaultAsync(t => t.Id == dto.TherapistId);
+
+            if (therapist == null)
+            {
+                return BadRequest(new { message = $"Therapist with ID '{dto.TherapistId}' not found." });
+            }
+
+            if (!therapist.IsAvailable)
+            {
+                return BadRequest(new { message = $"Therapist Dr. {therapist.User?.FullName ?? "Selected"} is currently marked as off-duty/unavailable." });
+            }
+
+            startTime = dto.ScheduledStart ?? DateTime.UtcNow.AddMinutes(30);
+            endTime = startTime.AddMinutes(category.EstimatedDurationMinutes);
+
+            // Validate therapist availability for the specified slot
+            var conflictingAppointment = await _context.Appointments
+                .Where(a => a.TherapistId == therapist.Id
+                    && a.Status != AppointmentStatus.CANCELLED
+                    && a.Status != AppointmentStatus.COMPLETED
+                    && ((startTime >= a.ScheduledStart && startTime < a.ScheduledEnd)
+                        || (endTime > a.ScheduledStart && endTime <= a.ScheduledEnd)
+                        || (startTime <= a.ScheduledStart && endTime >= a.ScheduledEnd)))
+                .FirstOrDefaultAsync();
+
+            if (conflictingAppointment != null)
+            {
+                return BadRequest(new
+                {
+                    message = $"Therapist Dr. {therapist.User?.FullName ?? "Selected"} is already booked for an appointment from {conflictingAppointment.ScheduledStart:hh:mm tt} to {conflictingAppointment.ScheduledEnd:hh:mm tt}. Please choose an available time or therapist."
+                });
+            }
+        }
+
         var newRequest = new ServiceRequest
         {
             Id = $"req_{DateTime.UtcNow.Ticks % 1000000}",
@@ -160,24 +205,83 @@ public class RequestsController : ControllerBase
             AddressLine = string.IsNullOrWhiteSpace(dto.AddressLine) ? "Indiranagar, Bengaluru" : dto.AddressLine,
             Latitude = dto.Latitude ?? 12.9716,
             Longitude = dto.Longitude ?? 77.5946,
-            Status = RequestStatus.PENDING_TRIAGE,
+            Status = therapist != null ? RequestStatus.ASSIGNED : RequestStatus.PENDING_TRIAGE,
             Urgency = urgency,
             CreatedAt = DateTime.UtcNow
         };
 
         _context.ServiceRequests.Add(newRequest);
+
+        Appointment? appointment = null;
+        if (therapist != null)
+        {
+            double distanceKm = CalculateDistanceKm(
+                therapist.CurrentLatitude, therapist.CurrentLongitude,
+                newRequest.Latitude, newRequest.Longitude
+            );
+
+            decimal basePrice = category.BasePrice;
+            var fee = _pricingService.CalculateSessionFee(basePrice, distanceKm, newRequest.Urgency);
+
+            var paymentMode = PaymentMode.CASH;
+            if (!string.IsNullOrEmpty(dto.PaymentMode) && Enum.TryParse<PaymentMode>(dto.PaymentMode, true, out var parsedMode))
+            {
+                paymentMode = parsedMode;
+            }
+
+            appointment = new Appointment
+            {
+                Id = $"apt_{DateTime.UtcNow.Ticks % 1000000}",
+                RequestId = newRequest.Id,
+                Request = newRequest,
+                PatientId = patient.Id,
+                Patient = patient,
+                TherapistId = therapist.Id,
+                Therapist = therapist,
+                Status = AppointmentStatus.ASSIGNED,
+                ScheduledStart = startTime,
+                ScheduledEnd = endTime,
+                ArrivalOtp = Random.Shared.Next(1000, 9999).ToString(),
+                CompletionOtp = Random.Shared.Next(1000, 9999).ToString(),
+                BaseFee = fee.BaseFee,
+                DistanceTierFee = fee.DistanceTierFee,
+                UrgentFee = fee.UrgentFee,
+                PlatformFee = fee.PlatformFee,
+                Tax = fee.Tax,
+                TotalFee = fee.TotalFee,
+                PaymentMode = paymentMode,
+                PaymentStatus = PaymentStatus.AUTHORIZED,
+                ClinicalNotes = $"Direct intake & dispatch: {newRequest.ChiefComplaint}",
+                CreatedAt = DateTime.UtcNow
+            };
+
+            _context.Appointments.Add(appointment);
+        }
+
         await _context.SaveChangesAsync();
 
         _logger.LogInformation("New service request created: {RequestId} for patient {PatientId}", newRequest.Id, patient.Id);
 
-        // Real-Time SignalR Broadcast to Dispatch Desk
+        // Real-Time SignalR Broadcasts
         await _hubContext.Clients.Group("dispatch_desk").SendAsync("ReceiveNewRequest", newRequest);
+
+        if (appointment != null && therapist != null)
+        {
+            await _hubContext.Clients.Group("dispatch_desk").SendAsync("ReceiveAppointmentAssigned", appointment);
+            await _hubContext.Clients.Group($"patient_{patient.Id}").SendAsync("ReceiveAppointmentAssigned", appointment);
+            await _hubContext.Clients.Group($"clinician_{therapist.Id}").SendAsync("ReceiveAppointmentAssigned", appointment);
+        }
+
+        var message = therapist != null
+            ? $"Patient '{patient.FullName}' registered and Dr. {therapist.User?.FullName ?? "Therapist"} dispatched for {startTime:MMM dd, yyyy hh:mm tt}!"
+            : $"New patient '{patient.FullName}' registered and triage request #{newRequest.Id} created!";
 
         return Ok(new
         {
             success = true,
-            message = $"New patient '{patient.FullName}' registered and triage request #{newRequest.Id} created!",
+            message,
             request = newRequest,
+            appointment,
             patient = new
             {
                 patient.Id,
@@ -187,5 +291,24 @@ public class RequestsController : ControllerBase
                 patient.Role
             }
         });
+    }
+
+    private static double CalculateDistanceKm(double lat1, double lon1, double lat2, double lon2)
+    {
+        const double R = 6371.0;
+        double dLat = ToRadians(lat2 - lat1);
+        double dLon = ToRadians(lon2 - lon1);
+
+        double a = Math.Sin(dLat / 2) * Math.Sin(dLat / 2) +
+                   Math.Cos(ToRadians(lat1)) * Math.Cos(ToRadians(lat2)) *
+                   Math.Sin(dLon / 2) * Math.Sin(dLon / 2);
+
+        double c = 2 * Math.Atan2(Math.Sqrt(a), Math.Sqrt(1 - a));
+        return Math.Round(R * c, 2);
+    }
+
+    private static double ToRadians(double degrees)
+    {
+        return degrees * (Math.PI / 180.0);
     }
 }

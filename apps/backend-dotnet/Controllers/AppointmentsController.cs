@@ -114,6 +114,33 @@ public class AppointmentsController : ControllerBase
             return BadRequest(new { message = "Patient record not found." });
         }
 
+        if (!therapist.IsAvailable)
+        {
+            return BadRequest(new { message = $"Therapist Dr. {therapist.User?.FullName ?? "Selected"} is currently marked as off-duty/unavailable." });
+        }
+
+        var startTime = dto.ScheduledStart ?? DateTime.UtcNow.AddMinutes(30);
+        int durationMinutes = request.Category?.EstimatedDurationMinutes ?? 60;
+        var endTime = startTime.AddMinutes(durationMinutes);
+
+        // Validate therapist schedule availability for this date & time slot
+        var conflictingAppointment = await _context.Appointments
+            .Where(a => a.TherapistId == therapist.Id
+                && a.Status != AppointmentStatus.CANCELLED
+                && a.Status != AppointmentStatus.COMPLETED
+                && ((startTime >= a.ScheduledStart && startTime < a.ScheduledEnd)
+                    || (endTime > a.ScheduledStart && endTime <= a.ScheduledEnd)
+                    || (startTime <= a.ScheduledStart && endTime >= a.ScheduledEnd)))
+            .FirstOrDefaultAsync();
+
+        if (conflictingAppointment != null)
+        {
+            return BadRequest(new
+            {
+                message = $"Therapist Dr. {therapist.User?.FullName ?? "Selected"} is already booked for an appointment from {conflictingAppointment.ScheduledStart:hh:mm tt} to {conflictingAppointment.ScheduledEnd:hh:mm tt}. Please pick an available time slot or therapist."
+            });
+        }
+
         // Calculate approximate distance (Haversine formula in km)
         double distanceKm = CalculateDistanceKm(
             therapist.CurrentLatitude, therapist.CurrentLongitude,
@@ -123,9 +150,11 @@ public class AppointmentsController : ControllerBase
         decimal basePrice = request.Category?.BasePrice ?? 85.00m;
         var fee = _pricingService.CalculateSessionFee(basePrice, distanceKm, request.Urgency);
 
-        var startTime = dto.ScheduledStart ?? DateTime.UtcNow.AddMinutes(30);
-        int durationMinutes = request.Category?.EstimatedDurationMinutes ?? 60;
-        var endTime = startTime.AddMinutes(durationMinutes);
+        var paymentMode = PaymentMode.CARD;
+        if (!string.IsNullOrEmpty(dto.PaymentMode) && Enum.TryParse<PaymentMode>(dto.PaymentMode, true, out var parsedMode))
+        {
+            paymentMode = parsedMode;
+        }
 
         // Generate 4-digit arrival OTP
         string arrivalOtp = Random.Shared.Next(1000, 9999).ToString();
@@ -149,7 +178,7 @@ public class AppointmentsController : ControllerBase
             PlatformFee = fee.PlatformFee,
             Tax = fee.Tax,
             TotalFee = fee.TotalFee,
-            PaymentMode = PaymentMode.CARD,
+            PaymentMode = paymentMode,
             PaymentStatus = PaymentStatus.AUTHORIZED,
             ClinicalNotes = $"Initial booking: {request.ChiefComplaint}",
             CreatedAt = DateTime.UtcNow

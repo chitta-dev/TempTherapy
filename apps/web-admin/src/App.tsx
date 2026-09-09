@@ -34,8 +34,14 @@ import {
   Key,
   Eye,
   EyeOff,
-  MessageSquare
+  MessageSquare,
+  CreditCard
 } from 'lucide-react';
+import { UsersGrid } from './components/UsersGrid';
+import { ServiceCatalogGrid } from './components/ServiceCatalogGrid';
+import { PendingTriageGrid } from './components/PendingTriageGrid';
+import { ActiveDispatchesGrid } from './components/ActiveDispatchesGrid';
+import { PaymentsGrid } from './components/PaymentsGrid';
 import { 
   calculateSessionFee, 
   ServiceRequest, 
@@ -167,7 +173,7 @@ export default function App() {
   const [loginLoading, setLoginLoading] = useState(false);
 
   // Tab State
-  const [activeTab, setActiveTab] = useState<'queue' | 'appointments' | 'users' | 'categories' | 'new-request'>('queue');
+  const [activeTab, setActiveTab] = useState<'queue' | 'appointments' | 'payments' | 'users' | 'categories' | 'new-request'>('queue');
 
   // Live Data State
   const [requests, setRequests] = useState<ServiceRequest[]>([]);
@@ -1564,11 +1570,30 @@ export default function App() {
             }`}
           >
             <Calendar className="w-3.5 h-3.5 text-teal-600" />
-            <span>Active Dispatches & Payments</span>
+            <span>Active Dispatches</span>
             <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
               activeTab === 'appointments' ? 'bg-teal-100 text-teal-800' : 'bg-slate-200 text-slate-700'
             }`}>
               {appointments.length}
+            </span>
+          </button>
+
+          <button 
+            onClick={() => setActiveTab('payments')}
+            className={`px-3.5 py-2 text-xs font-bold rounded-xl transition flex items-center space-x-2 ${
+              activeTab === 'payments' 
+                ? 'bg-white text-teal-800 shadow-xs border border-slate-200/60' 
+                : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
+            }`}
+          >
+            <CreditCard className="w-3.5 h-3.5 text-emerald-600" />
+            <span>Payments & Ledger (₹)</span>
+            <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
+              activeTab === 'payments' ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200 text-slate-700'
+            }`}>
+              {appointments.filter((a: any) => a.paymentStatus === 'PENDING').length > 0 
+                ? `${appointments.filter((a: any) => a.paymentStatus === 'PENDING').length} Pending`
+                : `${appointments.length} Settled`}
             </span>
           </button>
 
@@ -1617,409 +1642,60 @@ export default function App() {
       <main className="flex-1 p-6 lg:p-8 max-w-7xl mx-auto w-full">
         {/* ========================================================================= */}
         {/* TAB 1: PENDING REQUESTS QUEUE (OPERATIONAL - FOR DESKBOY & ADMIN) */}
-        {/* ========================================================================= */}
         {activeTab === 'queue' && (
-          <div className="space-y-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-xl font-black text-slate-900 tracking-tight">Incoming Patient Requests</h2>
-                <p className="text-xs text-slate-500 mt-0.5">Review patient clinical needs, assign verified therapists, and confirm visit time.</p>
-              </div>
-              <button 
-                onClick={fetchData} 
-                className="inline-flex items-center space-x-1.5 text-xs font-bold text-teal-700 bg-teal-50 hover:bg-teal-100 border border-teal-200 px-3 py-1.5 rounded-xl transition shadow-xs"
-              >
-                <span>🔄 Refresh Queue</span>
-              </button>
-            </div>
-
-            {requests.filter(r => r.status === 'REQUEST_SUBMITTED' || (r.status as any) === 'PENDING_TRIAGE').length === 0 ? (
-              <div className="bg-white rounded-3xl p-12 text-center border border-slate-200/80 shadow-xs">
-                <div className="w-16 h-16 rounded-2xl bg-teal-50 text-teal-600 border border-teal-200/70 flex items-center justify-center mx-auto mb-3">
-                  <CheckCircle2 className="w-8 h-8 text-teal-600" />
-                </div>
-                <h3 className="text-base font-bold text-slate-900">Dispatch Queue is Clear</h3>
-                <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">All incoming patient requests have been scheduled and assigned to clinicians.</p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {requests.filter(r => r.status === 'REQUEST_SUBMITTED' || (r.status as any) === 'PENDING_TRIAGE').map((req) => {
-                  const categoryName = req.category?.name || 'Orthopedic & Spine Care';
-                  const patientName = req.patient?.fullName || 'Patient';
-                  const patientPhone = (req.patient as any)?.phoneNumber || (req.patient as any)?.phone || '+91 98765 43210';
-                  const address = (req as any).addressLine || req.address?.addressLine || '742 Evergreen Terrace, New Delhi';
-                  const timeSlot = (req as any).preferredTimeSlot || req.preferredTimeWindow || '10:00 AM';
-                  const painFocus = Array.isArray(req.painAreas) && req.painAreas.length > 0 
-                    ? req.painAreas.join(', ') 
-                    : ((req as any).targetArea || 'Evaluation');
-                  const condition = (req as any).chiefComplaint || req.conditionDescription || 'Needs clinical evaluation and targeted therapy.';
-                  const price = (req.category as any)?.basePrice || 850;
-
-                  return (
-                    <div key={req.id} className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-xs hover:shadow-md hover:border-teal-400 transition-all duration-200 space-y-4">
-                      <div className="flex items-start justify-between">
-                        <div>
-                          <div className="flex items-center space-x-2">
-                            <span className="inline-block px-3 py-1 rounded-full text-xs font-bold bg-teal-50 text-teal-800 border border-teal-200/80">
-                              {categoryName}
-                            </span>
-                            {req.urgency === 'URGENT' && (
-                              <span className="inline-block px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-rose-50 text-rose-700 border border-rose-200">
-                                🚨 URGENT
-                              </span>
-                            )}
-                          </div>
-                          <h3 className="text-base font-black text-slate-900 mt-1.5">{patientName}</h3>
-                          <p className="text-xs text-slate-500 flex items-center space-x-1.5 mt-0.5 font-medium">
-                            <Phone className="w-3.5 h-3.5 text-teal-600" />
-                            <span>{patientPhone}</span>
-                          </p>
-                        </div>
-                        <span className="text-[11px] font-mono bg-slate-100 text-slate-600 px-2.5 py-1 rounded-lg border border-slate-200/60 font-semibold">
-                          {req.id}
-                        </span>
-                      </div>
-
-                      <div className="bg-slate-50/80 p-3.5 rounded-xl text-xs space-y-2 text-slate-700 border border-slate-100">
-                        <p className="flex items-center space-x-2">
-                          <MapPin className="w-4 h-4 text-rose-500 shrink-0" />
-                          <span className="font-medium text-slate-800">{address}</span>
-                        </p>
-                        <p className="flex items-center space-x-2">
-                          <Clock className="w-4 h-4 text-amber-500 shrink-0" />
-                          <span className="font-medium text-slate-800">{timeSlot}</span>
-                        </p>
-                        <p className="flex items-center space-x-2">
-                          <Activity className="w-4 h-4 text-teal-600 shrink-0" />
-                          <span className="font-bold text-teal-900">Focus: {painFocus}</span>
-                        </p>
-                        <p className="text-slate-500 italic mt-1 border-t border-slate-200/50 pt-1.5">
-                          "{condition}"
-                        </p>
-                      </div>
-
-                      <div className="flex items-center justify-between pt-2 border-t border-slate-100">
-                        <div>
-                          <span className="text-[10px] uppercase tracking-wider text-slate-400 font-bold block">Base Session Fee</span>
-                          <span className="text-base font-black text-teal-800">₹{price}.00</span>
-                        </div>
-                        <button
-                          onClick={() => {
-                            setSelectedRequest(req);
-                          }}
-                          className="bg-teal-600 hover:bg-teal-700 active:bg-teal-800 text-white px-4 py-2 rounded-xl text-xs font-bold transition shadow-xs flex items-center space-x-1.5"
-                        >
-                          <span>Dispatch Clinician ➔</span>
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
+          <PendingTriageGrid
+            requests={requests}
+            categories={categoriesList}
+            onRefresh={fetchData}
+            onDispatchClinician={(req) => setSelectedRequest(req)}
+          />
         )}
 
-        {/* ========================================================================= */}
-        {/* TAB 2: ACTIVE DISPATCHES & PAYMENT SETTLEMENT (DESKBOY CAN COLLECT MONEY) */}
-        {/* ========================================================================= */}
+        {/* TAB 2: ACTIVE DISPATCHES & HOME VISITS */}
         {activeTab === 'appointments' && (
-          <div className="space-y-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-xl font-black text-slate-900 tracking-tight">Active Dispatches & Payment Operations</h2>
-                <p className="text-xs text-slate-500 mt-0.5">Live home visits, clinician progress, and DeskBoy payment settlement in Rupees (₹).</p>
-              </div>
-              <button 
-                onClick={fetchData} 
-                className="inline-flex items-center space-x-1.5 text-xs font-bold text-teal-700 bg-teal-50 hover:bg-teal-100 border border-teal-200 px-3 py-1.5 rounded-xl transition shadow-xs"
-              >
-                <span>🔄 Refresh Dispatches</span>
-              </button>
-            </div>
-
-            {appointments.length === 0 ? (
-              <div className="bg-white rounded-3xl p-12 text-center border border-slate-200/80 shadow-xs">
-                <div className="w-16 h-16 rounded-2xl bg-teal-50 text-teal-600 border border-teal-200/70 flex items-center justify-center mx-auto mb-3">
-                  <Calendar className="w-8 h-8 text-teal-600" />
-                </div>
-                <h3 className="text-base font-bold text-slate-900">No Dispatches Scheduled Yet</h3>
-                <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
-                  Triage requests from the Pending Queue or take phone bookings to dispatch therapists.
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {appointments.map((apt: any) => {
-                  const patientName = apt.patient?.fullName || 'Patient';
-                  const therapistName = apt.therapist?.user?.fullName || 'Dr. Sarah Jenkins, PT';
-                  const categoryName = apt.request?.category?.name || 'Orthopedic Rehabilitation';
-                  const totalFee = apt.totalFee || apt.totalAmount || 850;
-                  const paymentStatus = apt.paymentStatus || 'PENDING';
-                  const status = apt.status || 'ASSIGNED';
-
-                  return (
-                    <div key={apt.id} className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-xs hover:border-teal-300 transition space-y-4">
-                      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3">
-                        <div className="flex items-center space-x-3">
-                          <span className="text-xs font-mono font-bold bg-slate-100 text-slate-700 px-2.5 py-1 rounded-lg border border-slate-200/70">
-                            #{apt.id}
-                          </span>
-                          <span className="text-xs font-bold text-teal-800 bg-teal-50 px-3 py-1 rounded-full border border-teal-200/80">
-                            {categoryName}
-                          </span>
-                        </div>
-                        <div className="flex items-center space-x-2">
-                          <span className={`text-[11px] font-extrabold px-3 py-1 rounded-full border ${
-                            status === 'COMPLETED' ? 'bg-emerald-50 text-emerald-800 border-emerald-300' :
-                            status === 'IN_SESSION' ? 'bg-blue-50 text-blue-800 border-blue-300 animate-pulse' :
-                            status === 'ARRIVED' ? 'bg-amber-50 text-amber-800 border-amber-300' :
-                            'bg-slate-100 text-slate-700 border-slate-200'
-                          }`}>
-                            {status.replace('_', ' ')}
-                          </span>
-                          <span className={`text-[11px] font-extrabold px-3 py-1 rounded-full border ${
-                            paymentStatus === 'SETTLED' ? 'bg-emerald-50 text-emerald-800 border-emerald-300' : 'bg-amber-50 text-amber-800 border-amber-300'
-                          }`}>
-                            ₹{totalFee}.00 • {paymentStatus}
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
-                        <div className="space-y-1">
-                          <span className="text-slate-400 font-bold uppercase text-[10px] block">Patient Information</span>
-                          <p className="font-bold text-slate-900 text-sm">{patientName}</p>
-                          <p className="text-slate-500">{apt.patient?.phoneNumber || apt.patient?.phone || '+91 98765 43210'}</p>
-                          <p className="text-slate-500">{apt.request?.addressLine || apt.request?.address?.addressLine || 'Indiranagar, Bengaluru'}</p>
-                        </div>
-
-                        <div className="space-y-1">
-                          <span className="text-slate-400 font-bold uppercase text-[10px] block">Assigned Clinician</span>
-                          <p className="font-bold text-slate-900 text-sm">{therapistName}</p>
-                          <p className="text-slate-500">License: {apt.therapist?.licenseNumber || 'PT-IND-9204'}</p>
-                          <p className="text-teal-700 font-bold">Fixed Discharge OTP: 8844</p>
-                        </div>
-
-                        {/* DESKBOY PAYMENT COLLECTION BOX */}
-                        <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200/80 space-y-2">
-                          <span className="text-slate-500 font-bold uppercase text-[10px] block">Front-Desk Payment Settlement</span>
-                          {paymentStatus === 'SETTLED' ? (
-                            <div className="text-emerald-700 font-bold flex items-center space-x-1 text-xs">
-                              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                              <span>Paid & Settled (₹{totalFee}.00 via {apt.paymentMode || 'CASH'})</span>
-                            </div>
-                          ) : (
-                            <div className="space-y-2">
-                              <p className="text-[11px] text-amber-800 font-medium">Payment of ₹{totalFee}.00 is pending collection:</p>
-                              <div className="flex items-center space-x-2">
-                                <button
-                                  onClick={() => handleDeskSettlePayment(apt.id, 'CASH')}
-                                  className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-1.5 px-2 rounded-lg text-xs transition shadow-xs text-center"
-                                >
-                                  💵 Collect Cash
-                                </button>
-                                <button
-                                  onClick={() => handleDeskSettlePayment(apt.id, 'UPI')}
-                                  className="flex-1 bg-sky-600 hover:bg-sky-700 text-white font-bold py-1.5 px-2 rounded-lg text-xs transition shadow-xs text-center"
-                                >
-                                  📱 Collect UPI
-                                </button>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
+          <ActiveDispatchesGrid
+            appointments={appointments}
+            therapists={therapists}
+            onRefresh={fetchData}
+            onSettlePayment={handleDeskSettlePayment}
+          />
         )}
 
-        {/* ========================================================================= */}
-        {/* TAB 3: USER MANAGEMENT (ADMIN ONLY) */}
-        {/* ========================================================================= */}
+        {/* TAB 3: PAYMENTS & FINANCIAL SETTLEMENT */}
+        {activeTab === 'payments' && (
+          <PaymentsGrid
+            appointments={appointments}
+            onRefresh={fetchData}
+            onSettlePayment={handleDeskSettlePayment}
+          />
+        )}
+
+        {/* TAB 4: USER MANAGEMENT (ADMIN ONLY) */}
         {activeTab === 'users' && isAdmin && (
-          <div className="space-y-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-xl font-black text-slate-900 tracking-tight">Staff & User Management</h2>
-                <p className="text-xs text-slate-500 mt-0.5">Admin-only console to create, edit, and assign roles for administrators, deskboys, and clinicians.</p>
-              </div>
-              <button 
-                onClick={() => setShowCreateUserModal(true)}
-                className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold px-4 py-2 rounded-xl transition shadow-xs flex items-center space-x-1.5"
-              >
-                <PlusCircle className="w-4 h-4" />
-                <span>+ Create New User</span>
-              </button>
-            </div>
-
-            {/* USERS ROSTER TABLE */}
-            <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="bg-slate-50/90 border-b border-slate-200/80 text-[11px] font-extrabold uppercase tracking-wider text-slate-500">
-                    <th className="p-4">User Details</th>
-                    <th className="p-4">Role Permission</th>
-                    <th className="p-4">Contact Phone</th>
-                    <th className="p-4">Account Status</th>
-                    <th className="p-4">Created Date</th>
-                    <th className="p-4 text-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 text-xs text-slate-700">
-                  {usersList.map(u => (
-                    <tr key={u.id} className="hover:bg-slate-50/60 transition">
-                      <td className="p-4">
-                        <div className="font-bold text-slate-900">{u.fullName}</div>
-                        {u.email ? (
-                          <div className="text-slate-400 font-mono text-[11px]">{u.email}</div>
-                        ) : (
-                          <div className="text-slate-400 italic text-[11px]">No email (Optional)</div>
-                        )}
-                        <div className="text-[10px] text-slate-400 font-mono">ID: {u.id}</div>
-                      </td>
-                      <td className="p-4">
-                        <span className={`px-2.5 py-1 rounded-full text-[11px] font-bold border ${
-                          u.role === 'Admin' ? 'bg-purple-50 text-purple-800 border-purple-200' :
-                          u.role === 'Dispatcher' ? 'bg-sky-50 text-sky-800 border-sky-200' :
-                          u.role === 'Therapist' ? 'bg-emerald-50 text-emerald-800 border-emerald-200' :
-                          'bg-slate-100 text-slate-700 border-slate-200'
-                        }`}>
-                          {u.role === 'Dispatcher' ? '🚴 DeskBoy (Dispatcher)' : u.role}
-                        </span>
-                      </td>
-                      <td className="p-4 font-medium">{u.phoneNumber || '—'}</td>
-                      <td className="p-4">
-                        {u.isActivated ? (
-                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                            <CheckCircle2 className="w-3 h-3 mr-1 text-emerald-600" /> Active
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
-                            {u.role === 'Patient' ? (
-                              <>
-                                <MessageSquare className="w-3 h-3 mr-1 text-amber-600" /> Pending First Login & Details
-                              </>
-                            ) : (
-                              <>
-                                <Mail className="w-3 h-3 mr-1 text-amber-600" /> Pending Activation
-                              </>
-                            )}
-                          </span>
-                        )}
-                      </td>
-                      <td className="p-4 text-slate-400">{new Date(u.createdAt).toLocaleDateString()}</td>
-                      <td className="p-4 text-right space-x-2">
-                        {/* If Patient: NO EMAIL ICON! Instead show Welcome SMS button */}
-                        {u.role === 'Patient' ? (
-                          <button
-                            onClick={() => handleResendActivation(u.id, u.email || '', u.fullName, u.role, u.phoneNumber)}
-                            className="text-teal-600 hover:text-teal-800 font-bold p-1"
-                            title="Send Welcome SMS / Mobile Login Notice"
-                          >
-                            <MessageSquare className="w-4 h-4 inline" />
-                          </button>
-                        ) : (
-                          <button
-                            onClick={() => handleResendActivation(u.id, u.email || '', u.fullName, u.role, u.phoneNumber)}
-                            className="text-amber-600 hover:text-amber-800 font-bold p-1"
-                            title={u.role === 'Therapist' ? "Resend Welcome Email (Mobile Login & 30-Day Biometrics)" : "Resend Activation / Password Reset Email"}
-                          >
-                            <Mail className="w-4 h-4 inline" />
-                          </button>
-                        )}
-                        <button
-                          onClick={() => {
-                            setEditingUser({ ...u });
-                            setShowEditUserModal(true);
-                          }}
-                          className="text-indigo-600 hover:text-indigo-800 font-bold p-1"
-                          title="Edit User"
-                        >
-                          <Edit className="w-4 h-4 inline" />
-                        </button>
-                        {u.id !== 'usr_admin' && (
-                          <button
-                            onClick={() => handleDeleteUser(u.id, u.fullName)}
-                            className="text-rose-500 hover:text-rose-700 font-bold p-1"
-                            title="Delete User"
-                          >
-                            <Trash2 className="w-4 h-4 inline" />
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
+          <UsersGrid
+            users={usersList}
+            isAdmin={!!isAdmin}
+            onOpenCreateUser={() => setShowCreateUserModal(true)}
+            onOpenEditUser={(u) => {
+              setEditingUser({ ...u });
+              setShowEditUserModal(true);
+            }}
+            onDeleteUser={handleDeleteUser}
+            onResendActivation={handleResendActivation}
+          />
         )}
 
-        {/* ========================================================================= */}
-        {/* TAB 4: SERVICE CATALOG & PRICING IN ₹ (ADMIN ONLY) */}
-        {/* ========================================================================= */}
+        {/* TAB 5: SERVICE CATALOG & PRICING IN ₹ (ADMIN ONLY) */}
         {activeTab === 'categories' && isAdmin && (
-          <div className="space-y-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-xl font-black text-slate-900 tracking-tight">Service Catalog & Pricing (₹ INR)</h2>
-                <p className="text-xs text-slate-500 mt-0.5">Configure clinical therapy categories, visit duration, and base prices in Rupees.</p>
-              </div>
-              <button 
-                onClick={() => setShowCreateCatModal(true)}
-                className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-4 py-2 rounded-xl transition shadow-xs flex items-center space-x-1.5"
-              >
-                <PlusCircle className="w-4 h-4" />
-                <span>+ Add Therapy Category</span>
-              </button>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {categoriesList.map(cat => (
-                <div key={cat.id} className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-xs hover:border-emerald-400 transition space-y-3">
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <span className="text-[10px] font-mono text-slate-400 font-bold uppercase">{cat.id}</span>
-                      <h3 className="text-base font-black text-slate-900 mt-0.5">{cat.name}</h3>
-                    </div>
-                    <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center font-bold text-lg">
-                      🩺
-                    </div>
-                  </div>
-
-                  <p className="text-xs text-slate-500 line-clamp-2">{cat.description || 'Targeted in-home physiotherapy session.'}</p>
-
-                  <div className="flex items-center justify-between pt-3 border-t border-slate-100 text-xs">
-                    <div>
-                      <span className="text-slate-400 text-[10px] uppercase font-bold block">Base Price (INR)</span>
-                      <span className="text-base font-black text-emerald-700">₹{cat.basePrice}.00</span>
-                    </div>
-                    <div className="text-right">
-                      <span className="text-slate-400 text-[10px] uppercase font-bold block">Duration</span>
-                      <span className="font-bold text-slate-700">⏱ {cat.estimatedDurationMinutes} mins</span>
-                    </div>
-                  </div>
-
-                  <div className="pt-2 flex justify-end space-x-2">
-                    <button
-                      onClick={() => {
-                        setEditingCat({ ...cat });
-                        setShowEditCatModal(true);
-                      }}
-                      className="text-xs font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-3 py-1.5 rounded-lg transition"
-                    >
-                      Edit Price & Duration
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
+          <ServiceCatalogGrid
+            categories={categoriesList}
+            isAdmin={!!isAdmin}
+            onOpenCreateCategory={() => setShowCreateCatModal(true)}
+            onOpenEditCategory={(cat) => {
+              setEditingCat({ ...cat });
+              setShowEditCatModal(true);
+            }}
+          />
         )}
 
         {/* ========================================================================= */}

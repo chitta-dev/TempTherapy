@@ -16,7 +16,10 @@ public record CreateServiceRequestDto(
     string? Urgency,
     string? PatientName = null,
     string? PatientPhone = null,
-    string? PatientEmail = null
+    string? PatientEmail = null,
+    string? TherapistId = null,
+    DateTime? ScheduledStart = null,
+    string? PaymentMode = null
 );
 
 public record AssignAppointmentDto(
