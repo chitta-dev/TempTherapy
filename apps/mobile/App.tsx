@@ -302,26 +302,34 @@ export default function App() {
     }
   };
 
-  // Fetch active and completed appointments from backend with proper patient syncing
-  const refreshActiveData = async () => {
+  // Fetch active and completed appointments from backend strictly scoped to logged-in user
+  const refreshActiveData = async (leaseOverride?: any) => {
+    const currentLease = leaseOverride !== undefined ? leaseOverride : sessionLease;
+    const currentRole = currentLease?.role || roleMode;
+
     try {
-      const url = sessionLease?.userId 
-        ? `${API_BASE}/appointments?patientId=${sessionLease.userId}`
+      const url = (currentRole === 'PATIENT' && currentLease?.userId)
+        ? `${API_BASE}/appointments?patientId=${currentLease.userId}`
         : `${API_BASE}/appointments`;
       const res = await fetch(url);
       const data = await res.json();
       let aptList: Appointment[] = Array.isArray(data) ? data : (data.appointments || []);
 
-      // If patient is logged in and backend returned full list, ensure filtering by this patient or phone
-      if (roleMode === 'PATIENT' && sessionLease?.userId) {
-        const patientFiltered = aptList.filter((a: any) => 
-          a.patientId === sessionLease.userId || 
-          a.patient?.phoneNumber === sessionLease.phoneNumber ||
-          a.patient?.id === sessionLease.userId
-        );
-        if (patientFiltered.length > 0) {
-          aptList = patientFiltered;
-        }
+      // If in Patient role, strictly filter to ONLY this user's records. NEVER leak other users!
+      if (currentRole === 'PATIENT') {
+        const leaseId = currentLease?.userId || '';
+        const cleanLeasePhone = currentLease?.phoneNumber ? currentLease.phoneNumber.replace(/\D/g, '') : '';
+
+        aptList = aptList.filter((a: any) => {
+          const matchId = leaseId && (a.patientId === leaseId || a.patient?.id === leaseId);
+          const aptPhone = a.patient?.phoneNumber ? a.patient.phoneNumber.replace(/\D/g, '') : '';
+          const matchPhone = cleanLeasePhone && aptPhone && (
+            cleanLeasePhone === aptPhone || 
+            (cleanLeasePhone.length >= 10 && aptPhone.endsWith(cleanLeasePhone.slice(-10))) ||
+            (aptPhone.length >= 10 && cleanLeasePhone.endsWith(aptPhone.slice(-10)))
+          );
+          return matchId || matchPhone;
+        });
       }
 
       // Filter active (in-progress) appointments vs completed
@@ -329,22 +337,26 @@ export default function App() {
       const completed = aptList.filter((a: any) => a.status === 'COMPLETED');
 
       setCompletedAppointments(completed);
-      if (completed.length > 0) {
-        setLastCompletedAppointment(completed[0]);
-      }
+      setLastCompletedAppointment(completed.length > 0 ? completed[0] : null);
 
       if (active) {
         setActiveAppointment(active);
         setPtStatus(active.status as any);
       } else {
-        // No active live appointment!
+        // No active live appointment for this patient!
         setActiveAppointment(null);
         if (completed.length > 0) {
           setPtStatus('COMPLETED');
+        } else {
+          setPtStatus('ASSIGNED');
         }
       }
     } catch (e) {
       console.log('Using local state mode');
+      // Offline fallback: never show other patients' appointments!
+      setActiveAppointment(null);
+      setCompletedAppointments([]);
+      setLastCompletedAppointment(null);
     }
   };
 
@@ -570,7 +582,7 @@ export default function App() {
           userRole === 'THERAPIST' ? '🩺 Clinician Verified' : '👤 Patient Verified', 
           `Welcome, ${newLease.userName}! Phone verified.`
         );
-        refreshActiveData();
+        refreshActiveData(newLease);
       } else {
         showToast('ERROR', 'Verification Failed', data.message || 'Invalid OTP code.');
       }
@@ -687,7 +699,7 @@ export default function App() {
           '🔐 Biometric Verified', 
           `Welcome back, ${sessionLease?.userName || ''}! Logged into ${sessionLease?.role === 'THERAPIST' ? 'Clinician Cockpit' : 'Patient Portal'}.`
         );
-        refreshActiveData();
+        refreshActiveData(sessionLease);
       }, 500);
     }, 900);
   };
@@ -719,6 +731,9 @@ export default function App() {
     setIsAuthenticated(false);
     setAuthStep('PHONE_INPUT');
     setAuthOtp('');
+    setActiveAppointment(null);
+    setCompletedAppointments([]);
+    setLastCompletedAppointment(null);
     showToast('INFO', 'Signed Out', 'You have been safely signed out. You can unlock with Biometrics or sign in with another phone.');
   };
 
@@ -1038,6 +1053,9 @@ export default function App() {
                 style={styles.authTextBtn}
                 onPress={() => {
                   setSessionLease(null);
+                  setActiveAppointment(null);
+                  setCompletedAppointments([]);
+                  setLastCompletedAppointment(null);
                   setAuthStep('PHONE_INPUT');
                 }}
               >
