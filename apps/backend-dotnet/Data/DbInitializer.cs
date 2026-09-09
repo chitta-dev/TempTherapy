@@ -20,6 +20,7 @@ public static class DbInitializer
                     ALTER TABLE users ADD COLUMN IF NOT EXISTS activation_token VARCHAR(100);
                     ALTER TABLE users ADD COLUMN IF NOT EXISTS activation_token_expires_at TIMESTAMP WITH TIME ZONE;
                     ALTER TABLE users ADD COLUMN IF NOT EXISTS is_activated BOOLEAN DEFAULT FALSE;
+                    ALTER TABLE users ADD COLUMN IF NOT EXISTS previous_passwords_json TEXT;
                 ");
             }
             else
@@ -27,6 +28,7 @@ public static class DbInitializer
                 try { context.Database.ExecuteSqlRaw("ALTER TABLE users ADD COLUMN activation_token TEXT;"); } catch { }
                 try { context.Database.ExecuteSqlRaw("ALTER TABLE users ADD COLUMN activation_token_expires_at TEXT;"); } catch { }
                 try { context.Database.ExecuteSqlRaw("ALTER TABLE users ADD COLUMN is_activated INTEGER DEFAULT 0;"); } catch { }
+                try { context.Database.ExecuteSqlRaw("ALTER TABLE users ADD COLUMN previous_passwords_json TEXT;"); } catch { }
             }
         }
         catch (Exception ex)

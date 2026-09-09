@@ -13,7 +13,10 @@ public record CreateServiceRequestDto(
     string? AddressLine,
     double? Latitude,
     double? Longitude,
-    string? Urgency
+    string? Urgency,
+    string? PatientName = null,
+    string? PatientPhone = null,
+    string? PatientEmail = null
 );
 
 public record AssignAppointmentDto(

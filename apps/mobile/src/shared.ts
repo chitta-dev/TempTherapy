@@ -52,6 +52,10 @@ export interface User {
   avatarUrl?: string;
   ssoProvider?: 'GOOGLE' | 'APPLE' | null;
   isActive?: boolean;
+  isActivated?: boolean;
+  address?: string;
+  age?: number | string;
+  gender?: string;
   createdAt?: string;
 }
 

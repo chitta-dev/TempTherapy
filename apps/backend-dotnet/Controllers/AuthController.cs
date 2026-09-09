@@ -85,9 +85,18 @@ public class AuthController : ControllerBase
             return BadRequest(new { success = false, message = "Email, activation token, and new password are required." });
         }
 
-        if (dto.NewPassword.Trim().Length < 6)
+        // 1. Enforce Password Strength & Complexity Policy
+        var policyResult = PasswordSecurity.ValidatePolicy(dto.NewPassword);
+        if (!policyResult.IsValid)
         {
-            return BadRequest(new { success = false, message = "Password must be at least 6 characters long." });
+            return BadRequest(new 
+            { 
+                success = false, 
+                message = policyResult.Errors.First(), 
+                errors = policyResult.Errors,
+                score = policyResult.StrengthScore,
+                label = policyResult.StrengthLabel
+            });
         }
 
         var cleanEmail = dto.Email.Trim().ToLower();
@@ -99,7 +108,7 @@ public class AuthController : ControllerBase
             return NotFound(new { success = false, message = "User account not found." });
         }
 
-        // Verify activation token matches and is not expired
+        // 2. Verify activation token matches and is not expired
         if (string.IsNullOrWhiteSpace(user.ActivationToken) || 
             !string.Equals(user.ActivationToken.Trim(), dto.Token.Trim(), StringComparison.OrdinalIgnoreCase))
         {
@@ -111,7 +120,21 @@ public class AuthController : ControllerBase
             return BadRequest(new { success = false, message = "This activation link has expired. Please request a new link." });
         }
 
-        // Encrypt new password using salt and hash
+        // 3. Enforce Old Passwords Policy: Cannot reuse current or previous passwords
+        if (PasswordSecurity.CheckOldPasswordReuse(dto.NewPassword, user.PasswordHash, user.PreviousPasswordsJson, out var reuseError))
+        {
+            return BadRequest(new 
+            { 
+                success = false, 
+                message = reuseError,
+                errors = new[] { reuseError }
+            });
+        }
+
+        // 4. Archive old password into previous passwords history (retaining up to last 5)
+        user.PreviousPasswordsJson = PasswordSecurity.AppendPasswordHistory(user.PreviousPasswordsJson, user.PasswordHash);
+
+        // 5. Encrypt new password using salt and hash
         user.PasswordHash = PasswordSecurity.HashPassword(dto.NewPassword.Trim());
         user.ActivationToken = null;
         user.ActivationTokenExpiresAt = null;
@@ -119,13 +142,36 @@ public class AuthController : ControllerBase
 
         await _context.SaveChangesAsync();
 
-        Console.WriteLine($"[AUTH-RESET] Password updated and account activated for {user.Email} using salt & hash.");
+        Console.WriteLine($"[AUTH-RESET] Password updated and account activated for {user.Email} using salt & hash (policy enforced, old password archived).");
 
         return Ok(new
         {
             success = true,
             message = "Your password has been successfully updated and encrypted! You can now log in with your updated password.",
             email = user.Email
+        });
+    }
+
+    public record ValidatePolicyDto(string Password);
+
+    /// <summary>
+    /// Checks password strength and policy criteria.
+    /// </summary>
+    [HttpPost("validate-password-policy")]
+    public IActionResult ValidatePasswordPolicy([FromBody] ValidatePolicyDto dto)
+    {
+        var result = PasswordSecurity.ValidatePolicy(dto.Password);
+        return Ok(new
+        {
+            isValid = result.IsValid,
+            score = result.StrengthScore,
+            label = result.StrengthLabel,
+            errors = result.Errors,
+            hasMinLength = result.HasMinLength,
+            hasUpper = result.HasUpper,
+            hasLower = result.HasLower,
+            hasDigit = result.HasDigit,
+            hasSpecial = result.HasSpecial
         });
     }
 
@@ -153,7 +199,7 @@ public class AuthController : ControllerBase
         user.ActivationTokenExpiresAt = DateTime.UtcNow.AddDays(7);
         await _context.SaveChangesAsync();
 
-        var activationLink = $"http://localhost:3000/?action=reset-password&token={user.ActivationToken}&email={Uri.EscapeDataString(user.Email)}";
+        var activationLink = $"http://localhost:3000/?action=reset-password&token={user.ActivationToken}&email={Uri.EscapeDataString(user.Email ?? "")}";
         var emailNotification = $"[RESET PASSWORD EMAIL to {user.Email}]: Reset your password at:\n{activationLink}\n(Link is valid for 7 days).";
         Console.WriteLine(emailNotification);
 
@@ -234,6 +280,7 @@ public class AuthController : ControllerBase
                 Email = $"patient_{digitsOnly}@therapyhub.health",
                 MedicalConditions = "None",
                 BloodGroup = "O+",
+                IsActivated = false,
                 PasswordHash = PasswordSecurity.HashPassword("password@1234"),
                 CreatedAt = DateTime.UtcNow
             };
@@ -259,6 +306,7 @@ public class AuthController : ControllerBase
                 matchedUser.BloodGroup,
                 matchedUser.EmergencyContactName,
                 matchedUser.EmergencyContactPhone,
+                matchedUser.IsActivated,
                 matchedUser.CreatedAt
             }
         });
@@ -289,6 +337,7 @@ public class AuthController : ControllerBase
             EmergencyContactPhone = dto.EmergencyContactPhone?.Trim(),
             MedicalConditions = dto.MedicalConditions?.Trim() ?? "None",
             BloodGroup = dto.BloodGroup?.Trim() ?? "O+",
+            IsActivated = true,
             PasswordHash = PasswordSecurity.HashPassword("password@1234"),
             CreatedAt = DateTime.UtcNow
         };
@@ -309,6 +358,7 @@ public class AuthController : ControllerBase
                 Role = user.Role.ToString(),
                 user.MedicalConditions,
                 user.BloodGroup,
+                user.IsActivated,
                 user.CreatedAt
             }
         });

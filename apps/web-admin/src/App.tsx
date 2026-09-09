@@ -17,7 +17,6 @@ import {
   Filter, 
   LogOut,
   Stethoscope, 
-  Smartphone, 
   Send, 
   Check, 
   X, 
@@ -29,7 +28,13 @@ import {
   Tag,
   Layers,
   Award,
-  DollarSign
+  DollarSign,
+  Copy,
+  ExternalLink,
+  Key,
+  Eye,
+  EyeOff,
+  MessageSquare
 } from 'lucide-react';
 import { 
   calculateSessionFee, 
@@ -53,12 +58,97 @@ interface CategoryItem {
 interface UserItem {
   id: string;
   fullName: string;
-  email: string;
+  email?: string;
   phoneNumber?: string;
   role: string;
+  isActivated?: boolean;
   passwordHash?: string;
   createdAt: string;
 }
+
+interface PasswordPolicyState {
+  hasMinLength: boolean;
+  hasUpper: boolean;
+  hasLower: boolean;
+  hasDigit: boolean;
+  hasSpecial: boolean;
+  isNotDefault: boolean;
+  score: number;
+  label: string;
+  barColor: string;
+  textColor: string;
+  isValid: boolean;
+}
+
+const evaluatePasswordPolicy = (pass: string): PasswordPolicyState => {
+  if (!pass) {
+    return {
+      hasMinLength: false,
+      hasUpper: false,
+      hasLower: false,
+      hasDigit: false,
+      hasSpecial: false,
+      isNotDefault: false,
+      score: 0,
+      label: 'Too Weak',
+      barColor: 'bg-slate-200',
+      textColor: 'text-slate-400',
+      isValid: false
+    };
+  }
+
+  const hasMinLength = pass.length >= 8;
+  const hasUpper = /[A-Z]/.test(pass);
+  const hasLower = /[a-z]/.test(pass);
+  const hasDigit = /[0-9]/.test(pass);
+  const hasSpecial = /[^A-Za-z0-9]/.test(pass);
+  const isNotDefault = pass.trim().toLowerCase() !== 'password@1234';
+
+  let score = 0;
+  if (hasMinLength) score++;
+  if (pass.length >= 12) score++;
+  if (hasUpper && hasLower) score++;
+  if (hasDigit) score++;
+  if (hasSpecial) score++;
+
+  const isValid = hasMinLength && hasUpper && hasLower && hasDigit && hasSpecial && isNotDefault;
+
+  let label = 'Very Weak';
+  let barColor = 'bg-rose-500';
+  let textColor = 'text-rose-600';
+
+  if (score === 2) {
+    label = 'Weak';
+    barColor = 'bg-orange-500';
+    textColor = 'text-orange-600';
+  } else if (score === 3) {
+    label = 'Fair';
+    barColor = 'bg-amber-500';
+    textColor = 'text-amber-600';
+  } else if (score === 4) {
+    label = 'Strong';
+    barColor = 'bg-lime-600';
+    textColor = 'text-lime-600';
+  } else if (score >= 5) {
+    label = 'Very Strong';
+    barColor = 'bg-emerald-600';
+    textColor = 'text-emerald-600';
+  }
+
+  return {
+    hasMinLength,
+    hasUpper,
+    hasLower,
+    hasDigit,
+    hasSpecial,
+    isNotDefault,
+    score: Math.min(5, Math.max(1, score)),
+    label,
+    barColor,
+    textColor,
+    isValid
+  };
+};
 
 export default function App() {
   // Authentication & Session
@@ -77,7 +167,7 @@ export default function App() {
   const [loginLoading, setLoginLoading] = useState(false);
 
   // Tab State
-  const [activeTab, setActiveTab] = useState<'queue' | 'appointments' | 'users' | 'categories' | 'new-request' | 'mobile-sim'>('queue');
+  const [activeTab, setActiveTab] = useState<'queue' | 'appointments' | 'users' | 'categories' | 'new-request'>('queue');
 
   // Live Data State
   const [requests, setRequests] = useState<ServiceRequest[]>([]);
@@ -93,9 +183,10 @@ export default function App() {
   const [selectedTherapistId, setSelectedTherapistId] = useState<string>('');
   const [paymentMode, setPaymentMode] = useState<'CASH_ON_SERVICE' | 'ONLINE_CARD'>('CASH_ON_SERVICE');
 
-  // New Phone Booking Form State
+  // New Patient Request Form State
   const [newPatientName, setNewPatientName] = useState('');
   const [newPatientPhone, setNewPatientPhone] = useState('');
+  const [newPatientEmail, setNewPatientEmail] = useState('');
   const [newAddress, setNewAddress] = useState('');
   const [newCategory, setNewCategory] = useState('cat_ortho');
   const [newPainArea, setNewPainArea] = useState('Lower Back');
@@ -115,6 +206,30 @@ export default function App() {
   const [newUserLicense, setNewUserLicense] = useState('PT-IND-92041');
   const [newUserExp, setNewUserExp] = useState(5);
   const [userActionLoading, setUserActionLoading] = useState(false);
+
+  // User Activation & Reset Password Flow State
+  const [createdActivationInfo, setCreatedActivationInfo] = useState<{ 
+    name: string; 
+    role: string; 
+    email?: string; 
+    phone?: string; 
+    link?: string; 
+    welcomeEmail?: string; 
+    welcomeSms?: string; 
+    initialPassword?: string 
+  } | null>(null);
+  const [showResetPasswordModal, setShowResetPasswordModal] = useState(false);
+  const [resetToken, setResetToken] = useState<string | null>(null);
+  const [resetEmail, setResetEmail] = useState<string>('');
+  const [newResetPassword, setNewResetPassword] = useState('');
+  const [confirmResetPassword, setConfirmResetPassword] = useState('');
+  const [showPasswordText, setShowPasswordText] = useState(false);
+  const [resetPasswordLoading, setResetPasswordLoading] = useState(false);
+  const [resetSuccessMessage, setResetSuccessMessage] = useState('');
+  const [resetErrorMessage, setResetErrorMessage] = useState('');
+  const [showRequestResetModal, setShowRequestResetModal] = useState(false);
+  const [requestResetEmail, setRequestResetEmail] = useState('');
+  const [requestResetLoading, setRequestResetLoading] = useState(false);
 
   // Category Management Modals
   const [showCreateCatModal, setShowCreateCatModal] = useState(false);
@@ -231,6 +346,22 @@ export default function App() {
   };
 
   useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const action = params.get('action');
+      const token = params.get('token');
+      const email = params.get('email');
+      if ((action === 'reset-password' || action === 'activate') && token) {
+        setResetToken(token);
+        setResetEmail(email ? decodeURIComponent(email) : '');
+        setShowResetPasswordModal(true);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  }, []);
+
+  useEffect(() => {
     if (currentUser) {
       fetchData();
 
@@ -339,9 +470,40 @@ export default function App() {
   // Handle Creating New User (Admin Only)
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newUserName || !newUserEmail) {
-      showToast('Name and Email are required.', 'error');
+    if (!newUserName.trim()) {
+      showToast('Full Name is required.', 'error');
       return;
+    }
+
+    if (newUserRole === 'Patient') {
+      if (!newUserPhone.trim()) {
+        showToast('Mobile phone number is required for Patient accounts.', 'error');
+        return;
+      }
+    } else if (newUserRole === 'Therapist') {
+      if (!newUserEmail.trim() || !newUserPhone.trim()) {
+        showToast('Email and Mobile Phone Number are required for Therapist accounts.', 'error');
+        return;
+      }
+    } else {
+      if (!newUserEmail.trim()) {
+        showToast('Email is required for staff accounts.', 'error');
+        return;
+      }
+    }
+
+    const isMobileRole = newUserRole === 'Patient' || newUserRole === 'Therapist';
+    let passwordToSubmit = 'password@1234';
+
+    if (!isMobileRole && newUserPassword) {
+      passwordToSubmit = newUserPassword.trim();
+      if (passwordToSubmit !== 'password@1234') {
+        const policyCheck = evaluatePasswordPolicy(passwordToSubmit);
+        if (!policyCheck.isValid) {
+          showToast('Staff password does not meet password policy requirements (8+ chars, uppercase, lowercase, digit, special symbol).', 'error');
+          return;
+        }
+      }
     }
 
     setUserActionLoading(true);
@@ -350,11 +512,11 @@ export default function App() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          fullName: newUserName,
-          email: newUserEmail,
-          phoneNumber: newUserPhone,
+          fullName: newUserName.trim(),
+          email: newUserEmail.trim() ? newUserEmail.trim() : undefined,
+          phoneNumber: newUserPhone.trim() ? newUserPhone.trim() : undefined,
           role: newUserRole,
-          password: newUserPassword || 'password@1234',
+          password: isMobileRole ? undefined : passwordToSubmit,
           licenseNumber: newUserRole === 'Therapist' ? newUserLicense : undefined,
           experienceYears: newUserRole === 'Therapist' ? newUserExp : undefined
         })
@@ -362,15 +524,31 @@ export default function App() {
       const data = await res.json();
 
       if (res.ok) {
-        const phoneNotice = newUserPhone ? ` SMS invitation dispatched to ${newUserPhone}.` : '';
-        showToast(`User ${newUserName} (${newUserRole}) created!${phoneNotice}`, 'success');
+        const successMsg = newUserRole === 'Patient'
+          ? `Patient ${newUserName} registered! Welcome SMS dispatched to ${newUserPhone}.`
+          : newUserRole === 'Therapist'
+          ? `Therapist ${newUserName} created! Welcome email dispatched to ${newUserEmail}.`
+          : `User ${newUserName} (${newUserRole}) created! Activation link ready.`;
+        showToast(successMsg, 'success');
         setShowCreateUserModal(false);
+        setCreatedActivationInfo({
+          name: newUserName,
+          role: newUserRole,
+          email: newUserEmail.trim() || undefined,
+          phone: newUserPhone.trim() || undefined,
+          link: data.activationLink || (newUserEmail.trim() ? `http://localhost:3000/?action=reset-password&token=${data.activationToken}&email=${encodeURIComponent(newUserEmail.trim())}` : undefined),
+          welcomeEmail: data.welcomeEmail,
+          welcomeSms: data.welcomeSms,
+          initialPassword: isMobileRole ? 'password@1234' : passwordToSubmit
+        });
         setNewUserName('');
         setNewUserEmail('');
         setNewUserPhone('');
+        setNewUserPassword('password@1234');
         fetchData();
       } else {
-        showToast(data.message || 'Failed to create user', 'error');
+        const errorText = data.message || (data.errors && data.errors[0]) || 'Failed to create user';
+        showToast(errorText, 'error');
       }
     } catch (err) {
       showToast('Error connecting to backend API.', 'error');
@@ -379,7 +557,7 @@ export default function App() {
     }
   };
 
-  // Handle Editing User (Admin Only)
+  // Handle Editing User (Admin Only) - Password is non-editable in web application
   const handleUpdateUser = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingUser) return;
@@ -393,8 +571,8 @@ export default function App() {
           fullName: editingUser.fullName,
           email: editingUser.email,
           phoneNumber: editingUser.phoneNumber,
-          role: editingUser.role,
-          password: editingUser.passwordHash
+          role: editingUser.role
+          // NOTE: Password is intentionally NOT editable in the web application
         })
       });
       const data = await res.json();
@@ -411,6 +589,131 @@ export default function App() {
       showToast('Error connecting to backend API.', 'error');
     } finally {
       setUserActionLoading(false);
+    }
+  };
+
+  // Handle Resending Activation / Welcome Email / SMS
+  const handleResendActivation = async (userId: string, email: string, name: string, role?: string, phone?: string) => {
+    try {
+      const res = await fetch(`${API_BASE}/users/${userId}/resend-activation`, {
+        method: 'POST'
+      });
+      const data = await res.json();
+      if (res.ok) {
+        showToast(data.message || `Notification dispatched!`, 'success');
+        setCreatedActivationInfo({
+          name,
+          role: data.role || role || 'Staff/User',
+          email: email || undefined,
+          phone: phone || data.phoneNumber || undefined,
+          link: data.activationLink,
+          welcomeEmail: data.welcomeEmail,
+          welcomeSms: data.welcomeSms
+        });
+      } else {
+        showToast(data.message || 'Failed to dispatch notification.', 'error');
+      }
+    } catch {
+      showToast('Error contacting backend.', 'error');
+    }
+  };
+
+  // Handle Reset Password / Activation Link Submission
+  const handleResetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setResetErrorMessage('');
+
+    const policy = evaluatePasswordPolicy(newResetPassword);
+    if (!policy.isValid) {
+      const errorMsg = !policy.hasMinLength ? 'Password must be at least 8 characters long.' :
+                       !policy.hasUpper ? 'Password must contain at least one uppercase letter (A-Z).' :
+                       !policy.hasLower ? 'Password must contain at least one lowercase letter (a-z).' :
+                       !policy.hasDigit ? 'Password must contain at least one numeric digit (0-9).' :
+                       !policy.hasSpecial ? 'Password must contain at least one special character (!@#$%^&*).' :
+                       'Password cannot be the default initial password ("password@1234").';
+      setResetErrorMessage(errorMsg);
+      showToast(errorMsg, 'error');
+      return;
+    }
+
+    if (newResetPassword !== confirmResetPassword) {
+      setResetErrorMessage('Passwords do not match.');
+      showToast('Passwords do not match.', 'error');
+      return;
+    }
+
+    if (!resetToken) {
+      setResetErrorMessage('Missing or invalid activation token.');
+      showToast('Missing activation token.', 'error');
+      return;
+    }
+
+    setResetPasswordLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/auth/reset-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: resetEmail,
+          token: resetToken,
+          newPassword: newResetPassword
+        })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setResetSuccessMessage('Your password has been securely updated and encrypted with salt and hash! You can now log in.');
+        showToast('Password updated successfully! Please log in.', 'success');
+        setLoginEmail(resetEmail);
+        setLoginPassword('');
+        setResetErrorMessage('');
+        // Clean URL parameters
+        window.history.replaceState({}, document.title, window.location.pathname);
+      } else {
+        const errorText = data.message || (data.errors && data.errors[0]) || 'Failed to update password.';
+        setResetErrorMessage(errorText);
+        showToast(errorText, 'error');
+      }
+    } catch {
+      setResetErrorMessage('Error connecting to backend API.');
+      showToast('Error connecting to backend API.', 'error');
+    } finally {
+      setResetPasswordLoading(false);
+    }
+  };
+
+  // Handle Requesting Password Reset Link (from Login Screen)
+  const handleRequestReset = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!requestResetEmail) {
+      showToast('Please enter your account email.', 'error');
+      return;
+    }
+
+    setRequestResetLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/auth/request-reset`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: requestResetEmail })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        showToast(data.message || 'Password reset link dispatched!', 'success');
+        setShowRequestResetModal(false);
+        setCreatedActivationInfo({
+          name: 'Staff Account',
+          role: 'User',
+          email: requestResetEmail,
+          link: data.activationLink
+        });
+        setRequestResetEmail('');
+      } else {
+        showToast(data.message || 'Account not found.', 'error');
+      }
+    } catch {
+      showToast('Error connecting to backend API.', 'error');
+    } finally {
+      setRequestResetLoading(false);
     }
   };
 
@@ -508,8 +811,9 @@ export default function App() {
     }
   };
 
-  // Handle New Phone Request Submission (DeskBoy / Admin)
-  const handleCreatePhoneRequest = async (e: React.FormEvent) => {
+  // Handle New Patient Request Submission (DeskBoy & Admin)
+  // Registers a new patient user and creates a pending triage request in the queue
+  const handleCreatePatientRequest = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newPatientName || !newPatientPhone || !newAddress) {
       showToast('Please fill in required fields (Patient Name, Phone, and Address).', 'error');
@@ -521,34 +825,33 @@ export default function App() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          createdByUserRole: 'DESK_BOY',
-          createdByUserId: currentUser?.id || 'usr_desk_1',
+          patientName: newPatientName.trim(),
+          patientPhone: newPatientPhone.trim(),
+          patientEmail: newPatientEmail.trim() || undefined,
           categoryId: newCategory,
-          address: {
-            addressLine: newAddress,
-            city: 'New Delhi',
-            pinCode: '110001',
-            coordinates: { latitude: 28.6139, longitude: 77.2090 }
-          },
-          painAreas: [newPainArea],
-          conditionDescription: newSymptoms || 'Inquiry taken via front-desk call.',
-          preferredTimeWindow: newTimeWindow,
-          urgency: isUrgent ? 'URGENT' : 'NORMAL'
+          addressLine: newAddress.trim(),
+          targetArea: newPainArea || 'Lower Back',
+          chiefComplaint: newSymptoms || 'New patient clinical request taken via front desk.',
+          preferredTimeSlot: newTimeWindow || 'Morning (9 AM - 12 PM)',
+          urgency: isUrgent ? 'URGENT' : 'ROUTINE'
         })
       });
       const data = await res.json();
-      if (data.success || res.ok) {
+      if (res.ok || data.success) {
         setNewPatientName('');
         setNewPatientPhone('');
+        setNewPatientEmail('');
         setNewAddress('');
         setNewSymptoms('');
-        showToast('Phone visit request created and added to triage queue!', 'success');
+        setIsUrgent(false);
+        showToast(data.message || `New patient registered and pending triage request created!`, 'success');
         fetchData();
         setActiveTab('queue');
+      } else {
+        showToast(data.message || 'Failed to create patient request.', 'error');
       }
     } catch (e) {
-      showToast('Request created locally.', 'info');
-      setActiveTab('queue');
+      showToast('Error connecting to backend API.', 'error');
     }
   };
 
@@ -558,11 +861,509 @@ export default function App() {
   const estimatedBasePrice = selectedCatObj ? selectedCatObj.basePrice : 850;
 
   // =========================================================================
+  // RESET PASSWORD & ACCOUNT ACTIVATION MODAL
+  // =========================================================================
+  const renderResetPasswordModal = () => {
+    if (!showResetPasswordModal) return null;
+
+    const policy = evaluatePasswordPolicy(newResetPassword);
+    const passwordsMatch = newResetPassword && confirmResetPassword && newResetPassword === confirmResetPassword;
+    const canSubmit = policy.isValid && passwordsMatch && !resetPasswordLoading;
+
+    return (
+      <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md flex items-center justify-center z-50 p-4 overflow-y-auto">
+        <div className="bg-white rounded-3xl max-w-lg w-full p-7 shadow-2xl space-y-5 border border-slate-200 my-8">
+          <div className="w-14 h-14 bg-indigo-100 text-indigo-600 rounded-2xl flex items-center justify-center mx-auto shadow-inner">
+            <Key className="w-7 h-7" />
+          </div>
+
+          <div className="text-center space-y-1">
+            <h3 className="text-lg font-black text-slate-900">Set Your Secure Password</h3>
+            <p className="text-xs text-slate-500">
+              Welcome to TherapyHub! Update your password below. It will be encrypted and stored using cryptographic salt & hash with password reuse prevention.
+            </p>
+          </div>
+
+          {resetErrorMessage && (
+            <div className="p-3 bg-rose-50 border border-rose-200 rounded-2xl text-rose-800 text-xs flex items-start space-x-2">
+              <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+              <div>
+                <p className="font-bold">Password Policy Check</p>
+                <p className="text-rose-700 text-[11px]">{resetErrorMessage}</p>
+              </div>
+            </div>
+          )}
+
+          {resetSuccessMessage ? (
+            <div className="space-y-4">
+              <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-2xl text-emerald-800 text-xs space-y-1 text-center">
+                <CheckCircle2 className="w-6 h-6 text-emerald-600 mx-auto mb-1" />
+                <p className="font-bold text-sm">Account Activated Successfully!</p>
+                <p className="text-slate-600">{resetSuccessMessage}</p>
+              </div>
+              <button
+                onClick={() => {
+                  setShowResetPasswordModal(false);
+                  setResetSuccessMessage('');
+                  setResetErrorMessage('');
+                  setResetToken(null);
+                  setNewResetPassword('');
+                  setConfirmResetPassword('');
+                }}
+                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs py-3 rounded-xl transition shadow-xs"
+              >
+                Proceed to Login
+              </button>
+            </div>
+          ) : (
+            <form onSubmit={handleResetPassword} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Account Email</label>
+                <input
+                  type="email"
+                  value={resetEmail}
+                  readOnly
+                  className="w-full px-3 py-2 bg-slate-100 border border-slate-200 rounded-xl text-xs font-mono text-slate-600 cursor-not-allowed"
+                />
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-bold text-slate-700">New Password</label>
+                  {newResetPassword && (
+                    <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full ${
+                      policy.score <= 2 ? 'bg-rose-100 text-rose-700' :
+                      policy.score === 3 ? 'bg-amber-100 text-amber-700' :
+                      policy.score === 4 ? 'bg-lime-100 text-lime-700' :
+                      'bg-emerald-100 text-emerald-700'
+                    }`}>
+                      {policy.label}
+                    </span>
+                  )}
+                </div>
+                <div className="relative">
+                  <input
+                    type={showPasswordText ? "text" : "password"}
+                    value={newResetPassword}
+                    onChange={e => {
+                      setNewResetPassword(e.target.value);
+                      if (resetErrorMessage) setResetErrorMessage('');
+                    }}
+                    required
+                    placeholder="Enter strong password (e.g. Strong#2026)"
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:bg-white focus:border-indigo-500 pr-10 text-slate-900"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPasswordText(!showPasswordText)}
+                    className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600"
+                  >
+                    {showPasswordText ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+
+                {/* REAL-TIME STRENGTH METER BAR */}
+                {newResetPassword && (
+                  <div className="mt-2 space-y-2">
+                    <div className="grid grid-cols-5 gap-1.5 h-1.5">
+                      {[1, 2, 3, 4, 5].map((lvl) => (
+                        <div
+                          key={lvl}
+                          className={`rounded-full transition-all duration-300 ${
+                            lvl <= policy.score ? policy.barColor : 'bg-slate-200'
+                          }`}
+                        />
+                      ))}
+                    </div>
+
+                    {/* INTERACTIVE POLICY CHECKLIST */}
+                    <div className="p-2.5 bg-slate-50 border border-slate-200/80 rounded-xl space-y-1 text-[11px]">
+                      <div className="flex items-center space-x-2">
+                        {policy.hasMinLength ? (
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                        ) : (
+                          <div className="w-3.5 h-3.5 rounded-full border border-slate-300 shrink-0 flex items-center justify-center text-[9px] text-slate-400">✕</div>
+                        )}
+                        <span className={policy.hasMinLength ? 'text-emerald-800 font-medium' : 'text-slate-500'}>
+                          At least 8 characters
+                        </span>
+                      </div>
+
+                      <div className="flex items-center space-x-2">
+                        {policy.hasUpper ? (
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                        ) : (
+                          <div className="w-3.5 h-3.5 rounded-full border border-slate-300 shrink-0 flex items-center justify-center text-[9px] text-slate-400">✕</div>
+                        )}
+                        <span className={policy.hasUpper ? 'text-emerald-800 font-medium' : 'text-slate-500'}>
+                          At least 1 uppercase letter (A-Z)
+                        </span>
+                      </div>
+
+                      <div className="flex items-center space-x-2">
+                        {policy.hasLower ? (
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                        ) : (
+                          <div className="w-3.5 h-3.5 rounded-full border border-slate-300 shrink-0 flex items-center justify-center text-[9px] text-slate-400">✕</div>
+                        )}
+                        <span className={policy.hasLower ? 'text-emerald-800 font-medium' : 'text-slate-500'}>
+                          At least 1 lowercase letter (a-z)
+                        </span>
+                      </div>
+
+                      <div className="flex items-center space-x-2">
+                        {policy.hasDigit ? (
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                        ) : (
+                          <div className="w-3.5 h-3.5 rounded-full border border-slate-300 shrink-0 flex items-center justify-center text-[9px] text-slate-400">✕</div>
+                        )}
+                        <span className={policy.hasDigit ? 'text-emerald-800 font-medium' : 'text-slate-500'}>
+                          At least 1 number (0-9)
+                        </span>
+                      </div>
+
+                      <div className="flex items-center space-x-2">
+                        {policy.hasSpecial ? (
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                        ) : (
+                          <div className="w-3.5 h-3.5 rounded-full border border-slate-300 shrink-0 flex items-center justify-center text-[9px] text-slate-400">✕</div>
+                        )}
+                        <span className={policy.hasSpecial ? 'text-emerald-800 font-medium' : 'text-slate-500'}>
+                          At least 1 special character (!@#$%^&*...)
+                        </span>
+                      </div>
+
+                      <div className="flex items-center space-x-2">
+                        {policy.isNotDefault ? (
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                        ) : (
+                          <div className="w-3.5 h-3.5 rounded-full border border-rose-300 shrink-0 flex items-center justify-center text-[9px] text-rose-500">✕</div>
+                        )}
+                        <span className={policy.isNotDefault ? 'text-emerald-800 font-medium' : 'text-rose-600 font-medium'}>
+                          Cannot be default password ('password@1234') or old password
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Confirm New Password</label>
+                <input
+                  type={showPasswordText ? "text" : "password"}
+                  value={confirmResetPassword}
+                  onChange={e => {
+                    setConfirmResetPassword(e.target.value);
+                    if (resetErrorMessage) setResetErrorMessage('');
+                  }}
+                  required
+                  placeholder="Re-enter password"
+                  className={`w-full px-3 py-2 border rounded-xl text-xs focus:bg-white text-slate-900 ${
+                    confirmResetPassword
+                      ? (newResetPassword === confirmResetPassword ? 'border-emerald-400 bg-emerald-50/20' : 'border-rose-400 bg-rose-50/20')
+                      : 'border-slate-200 bg-slate-50'
+                  }`}
+                />
+                {confirmResetPassword && (
+                  <div className="flex items-center space-x-1.5 text-[11px] mt-1">
+                    {newResetPassword === confirmResetPassword ? (
+                      <>
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                        <span className="text-emerald-700 font-semibold">Passwords match</span>
+                      </>
+                    ) : (
+                      <>
+                        <AlertCircle className="w-3.5 h-3.5 text-rose-500" />
+                        <span className="text-rose-600 font-semibold">Passwords do not match</span>
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <div className="p-3 bg-indigo-50/70 rounded-xl border border-indigo-100 text-[11px] text-indigo-950 space-y-1">
+                <div className="flex items-center space-x-1 font-bold">
+                  <ShieldCheck className="w-3.5 h-3.5 text-indigo-600" />
+                  <span>Enterprise Cryptographic Security</span>
+                </div>
+                <p className="text-slate-600 text-[10px] leading-relaxed">
+                  Your password is encrypted with <strong>PBKDF2-HMAC-SHA256 (100,000 rounds)</strong> using a unique 128-bit cryptographic salt. History tracking prevents reusing current or previous passwords.
+                </p>
+              </div>
+
+              <div className="flex space-x-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowResetPasswordModal(false);
+                    setResetErrorMessage('');
+                    window.history.replaceState({}, document.title, window.location.pathname);
+                  }}
+                  className="flex-1 px-4 py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={!canSubmit}
+                  className={`flex-1 font-bold text-xs py-2.5 rounded-xl transition shadow-xs flex items-center justify-center space-x-1 ${
+                    canSubmit
+                      ? 'bg-indigo-600 hover:bg-indigo-700 text-white cursor-pointer'
+                      : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                  }`}
+                >
+                  {resetPasswordLoading ? (
+                    <span>Saving...</span>
+                  ) : (
+                    <>
+                      <Check className="w-3.5 h-3.5" />
+                      <span>Update Password</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  // =========================================================================
+  // REQUEST PASSWORD RESET / ACTIVATION LINK MODAL
+  // =========================================================================
+  const renderRequestResetModal = () => {
+    if (!showRequestResetModal) return null;
+
+    return (
+      <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md flex items-center justify-center z-50 p-4">
+        <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4 border border-slate-200">
+          <div className="w-12 h-12 bg-indigo-100 text-indigo-600 rounded-2xl flex items-center justify-center mx-auto">
+            <Mail className="w-6 h-6" />
+          </div>
+          <div className="text-center space-y-1">
+            <h3 className="text-lg font-black text-slate-900">Request Password Setup / Reset</h3>
+            <p className="text-xs text-slate-500">
+              Enter your staff or account email address. We will generate and dispatch your secure activation link.
+            </p>
+          </div>
+          <form onSubmit={handleRequestReset} className="space-y-4">
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">Account Email</label>
+              <input
+                type="email"
+                value={requestResetEmail}
+                onChange={e => setRequestResetEmail(e.target.value)}
+                required
+                placeholder="e.g. admin@therapyhub.health"
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs"
+              />
+            </div>
+            <div className="flex space-x-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowRequestResetModal(false)}
+                className="flex-1 px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl transition"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={requestResetLoading}
+                className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs py-2 rounded-xl transition shadow-xs"
+              >
+                {requestResetLoading ? 'Sending...' : 'Send Link'}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    );
+  };
+
+  // =========================================================================
+  // ACTIVATION NOTIFICATION DISPATCHED CONFIRMATION DIALOG
+  // =========================================================================
+  const renderActivationDispatchedModal = () => {
+    if (!createdActivationInfo) return null;
+
+    const isTherapist = createdActivationInfo.role === 'Therapist';
+    const isPatient = createdActivationInfo.role === 'Patient';
+
+    const defaultTherapistEmailText = `Welcome to TherapyHub! Your therapist account has been created by the administrator. You can now login with your mobile number: ${createdActivationInfo.phone || '[Phone Number]'} using OTP 1234. Once logged in, biometric authentication will be enabled for 30 days.`;
+
+    const defaultPatientSmsText = `Welcome to TherapyHub! Your patient profile has been registered by the Care Desk. You can now login with your mobile number: ${createdActivationInfo.phone || '[Phone Number]'} using OTP 1234. On your first login, please provide your basic details to activate your account.`;
+
+    const therapistEmailBody = createdActivationInfo.welcomeEmail || defaultTherapistEmailText;
+    const patientSmsBody = createdActivationInfo.welcomeSms || defaultPatientSmsText;
+
+    return (
+      <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+        <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4 border border-slate-200">
+          <div className={`w-12 h-12 rounded-2xl flex items-center justify-center mx-auto ${
+            isTherapist ? 'bg-emerald-100 text-emerald-600' :
+            isPatient ? 'bg-teal-100 text-teal-600' : 'bg-indigo-100 text-indigo-600'
+          }`}>
+            {isPatient ? <MessageSquare className="w-6 h-6" /> : <Mail className="w-6 h-6" />}
+          </div>
+
+          <div className="text-center space-y-1">
+            <h3 className="text-lg font-black text-slate-900">
+              {isTherapist ? 'Welcome Email Dispatched!' :
+               isPatient ? 'Welcome SMS Dispatched!' : 'Activation Email Dispatched!'}
+            </h3>
+            <p className="text-xs text-slate-500">
+              {isTherapist ? (
+                <>Clinician account created for <span className="font-bold text-slate-800">Dr. {createdActivationInfo.name}</span></>
+              ) : isPatient ? (
+                <>Patient profile registered for <span className="font-bold text-slate-800">{createdActivationInfo.name}</span></>
+              ) : (
+                <>Staff account created for <span className="font-bold text-slate-800">{createdActivationInfo.name}</span> ({createdActivationInfo.role})</>
+              )}
+            </p>
+          </div>
+
+          {/* ROLE-SPECIFIC CONTENT BOX */}
+          {isTherapist ? (
+            <div className="p-3.5 bg-emerald-50/70 rounded-xl border border-emerald-200/80 text-xs space-y-2">
+              <div className="flex justify-between text-slate-600">
+                <span className="font-bold">Clinician Email:</span>
+                <span className="font-mono text-emerald-800 font-semibold">{createdActivationInfo.email || '—'}</span>
+              </div>
+              <div className="flex justify-between text-slate-600">
+                <span className="font-bold">Mobile Phone:</span>
+                <span className="font-mono text-emerald-800 font-semibold">{createdActivationInfo.phone || '—'}</span>
+              </div>
+              <div className="flex justify-between text-slate-600">
+                <span className="font-bold">Auth Method:</span>
+                <span className="text-emerald-700 font-semibold">Mobile OTP (1234) + 30-Day Biometrics</span>
+              </div>
+              <div className="space-y-1 pt-2 border-t border-emerald-200/60">
+                <span className="font-bold text-emerald-900 block text-[11px]">Test Welcome Email Message:</span>
+                <div className="p-2.5 bg-white border border-emerald-200 rounded-lg text-[11px] text-slate-700 leading-relaxed select-all whitespace-pre-wrap">
+                  {therapistEmailBody}
+                </div>
+              </div>
+            </div>
+          ) : isPatient ? (
+            <div className="p-3.5 bg-teal-50/70 rounded-xl border border-teal-200/80 text-xs space-y-2">
+              <div className="flex justify-between text-slate-600">
+                <span className="font-bold">Mobile Phone:</span>
+                <span className="font-mono text-teal-800 font-semibold">{createdActivationInfo.phone || '—'}</span>
+              </div>
+              <div className="flex justify-between text-slate-600">
+                <span className="font-bold">Email Address:</span>
+                <span className="text-slate-500 italic">{createdActivationInfo.email || 'Not Provided (Email is optional for patients)'}</span>
+              </div>
+              <div className="flex justify-between text-slate-600">
+                <span className="font-bold">First Login:</span>
+                <span className="text-teal-700 font-semibold">OTP (1234) → Mandatory Basic Details</span>
+              </div>
+              <div className="space-y-1 pt-2 border-t border-teal-200/60">
+                <span className="font-bold text-teal-900 block text-[11px]">Test Welcome SMS Message:</span>
+                <div className="p-2.5 bg-white border border-teal-200 rounded-lg text-[11px] text-slate-700 leading-relaxed select-all whitespace-pre-wrap">
+                  {patientSmsBody}
+                </div>
+              </div>
+              <p className="text-[10px] text-slate-500 italic pt-1">
+                ℹ️ Email is not mandatory for patients. Account unlocks for doctor search & scheduling once the patient submits mandatory basic details.
+              </p>
+            </div>
+          ) : (
+            <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 text-xs space-y-2">
+              <div className="flex justify-between text-slate-600">
+                <span className="font-bold">Recipient:</span>
+                <span className="font-mono text-indigo-600">{createdActivationInfo.email}</span>
+              </div>
+              {createdActivationInfo.initialPassword && (
+                <div className="flex justify-between text-slate-600">
+                  <span className="font-bold">Initial Password:</span>
+                  <span className="font-mono text-slate-500">password@1234 (Salt-Hashed)</span>
+                </div>
+              )}
+              <div className="space-y-1 pt-1 border-t border-slate-200/60">
+                <span className="font-bold text-slate-700 block text-[11px]">Activation & Password Setup Link:</span>
+                <div className="p-2 bg-white border border-slate-200 rounded-lg font-mono text-[11px] break-all text-indigo-600 select-all">
+                  {createdActivationInfo.link}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ACTION BUTTONS */}
+          <div className="flex space-x-2 pt-1">
+            {isTherapist ? (
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(therapistEmailBody);
+                  showToast('Welcome email text copied to clipboard!', 'success');
+                }}
+                className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs py-2.5 rounded-xl transition flex items-center justify-center space-x-1 shadow-xs"
+              >
+                <Copy className="w-3.5 h-3.5" />
+                <span>Copy Email Text</span>
+              </button>
+            ) : isPatient ? (
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(patientSmsBody);
+                  showToast('Welcome SMS text copied to clipboard!', 'success');
+                }}
+                className="flex-1 bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs py-2.5 rounded-xl transition flex items-center justify-center space-x-1 shadow-xs"
+              >
+                <Copy className="w-3.5 h-3.5" />
+                <span>Copy SMS Text</span>
+              </button>
+            ) : (
+              <>
+                <button
+                  onClick={() => {
+                    if (createdActivationInfo.link) {
+                      navigator.clipboard.writeText(createdActivationInfo.link);
+                      showToast('Activation link copied to clipboard!', 'success');
+                    }
+                  }}
+                  className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs py-2.5 rounded-xl transition flex items-center justify-center space-x-1"
+                >
+                  <Copy className="w-3.5 h-3.5" />
+                  <span>Copy Link</span>
+                </button>
+                <button
+                  onClick={() => {
+                    if (createdActivationInfo.link) {
+                      window.location.href = createdActivationInfo.link;
+                    }
+                  }}
+                  className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs py-2.5 rounded-xl transition flex items-center justify-center space-x-1 shadow-xs"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  <span>Test Reset Flow</span>
+                </button>
+              </>
+            )}
+          </div>
+
+          <button
+            onClick={() => setCreatedActivationInfo(null)}
+            className="w-full text-center text-xs font-semibold text-slate-400 hover:text-slate-600 pt-1"
+          >
+            Dismiss
+          </button>
+        </div>
+      </div>
+    );
+  };
+
+  // =========================================================================
   // 1. LOGIN SCREEN (RENDERED WHEN NOT AUTHENTICATED)
   // =========================================================================
   if (!currentUser) {
     return (
-      <div className="min-h-screen bg-slate-900 flex flex-col justify-center items-center p-4 font-sans text-slate-100">
+      <div className="min-h-screen bg-slate-900 flex flex-col justify-center items-center p-4 font-sans text-slate-100 relative">
+        {renderResetPasswordModal()}
+        {renderRequestResetModal()}
+        {renderActivationDispatchedModal()}
         <div className="w-full max-w-md bg-slate-800/90 backdrop-blur-xl border border-slate-700/80 rounded-3xl p-8 shadow-2xl space-y-6">
           <div className="text-center space-y-2">
             <div className="w-14 h-14 bg-teal-600 rounded-2xl flex items-center justify-center mx-auto shadow-lg shadow-teal-500/20 text-white">
@@ -617,6 +1418,16 @@ export default function App() {
             >
               {loginLoading ? <span>Authenticating...</span> : <span>Sign In to Clinical Portal ➔</span>}
             </button>
+
+            <div className="text-center pt-1">
+              <button
+                type="button"
+                onClick={() => setShowRequestResetModal(true)}
+                className="text-xs text-teal-400 hover:text-teal-300 font-medium transition underline"
+              >
+                Received an activation email or forgot password?
+              </button>
+            </div>
           </form>
 
           {/* QUICK CREDENTIAL TEST SELECTORS */}
@@ -691,7 +1502,7 @@ export default function App() {
                 {isAdmin ? 'ADMIN CONTROL' : 'CARE DESK'}
               </span>
             </div>
-            <p className="text-xs text-slate-500 font-medium">In-Home Physiotherapy Dispatch & Operations (₹ INR)</p>
+            <p className="text-xs text-slate-500 font-medium">In-Home Physiotherapy Dispatch & Operations</p>
           </div>
         </div>
 
@@ -702,7 +1513,7 @@ export default function App() {
             className="flex items-center space-x-2 bg-teal-600 hover:bg-teal-700 active:bg-teal-800 text-white px-4 py-2.5 rounded-xl font-bold text-xs transition shadow-xs"
           >
             <PlusCircle className="w-4 h-4" />
-            <span>+ Intake Phone Request</span>
+            <span>+ New Patient Request</span>
           </button>
 
           <div className="flex items-center space-x-3 bg-slate-100/80 px-3.5 py-1.5 rounded-xl border border-slate-200/80">
@@ -799,29 +1610,6 @@ export default function App() {
               </button>
             </>
           )}
-
-          <button 
-            onClick={() => setActiveTab('mobile-sim')}
-            className={`px-3.5 py-2 text-xs font-bold rounded-xl transition flex items-center space-x-2 ${
-              activeTab === 'mobile-sim' 
-                ? 'bg-teal-600 text-white shadow-xs' 
-                : 'text-teal-700 hover:bg-teal-50/80 hover:text-teal-900'
-            }`}
-          >
-            <Smartphone className="w-3.5 h-3.5" />
-            <span>📱 Mobile App Simulator</span>
-          </button>
-        </div>
-
-        <div className="flex items-center space-x-2.5">
-          <div className={`flex items-center space-x-2 px-3.5 py-1.5 rounded-full text-xs font-bold border transition shadow-2xs ${
-            signalrConnected 
-              ? 'bg-emerald-50 border-emerald-200/90 text-emerald-800' 
-              : 'bg-amber-50 border-amber-200/90 text-amber-800'
-          }`}>
-            <span className={`w-2 h-2 rounded-full ${signalrConnected ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`}></span>
-            <span>{signalrConnected ? '⚡ .NET Core SignalR Live' : 'Connecting Real-Time...'}</span>
-          </div>
         </div>
       </nav>
 
@@ -1077,7 +1865,7 @@ export default function App() {
                     <th className="p-4">User Details</th>
                     <th className="p-4">Role Permission</th>
                     <th className="p-4">Contact Phone</th>
-                    <th className="p-4">Default Password</th>
+                    <th className="p-4">Account Status</th>
                     <th className="p-4">Created Date</th>
                     <th className="p-4 text-right">Actions</th>
                   </tr>
@@ -1087,7 +1875,11 @@ export default function App() {
                     <tr key={u.id} className="hover:bg-slate-50/60 transition">
                       <td className="p-4">
                         <div className="font-bold text-slate-900">{u.fullName}</div>
-                        <div className="text-slate-400 font-mono text-[11px]">{u.email}</div>
+                        {u.email ? (
+                          <div className="text-slate-400 font-mono text-[11px]">{u.email}</div>
+                        ) : (
+                          <div className="text-slate-400 italic text-[11px]">No email (Optional)</div>
+                        )}
                         <div className="text-[10px] text-slate-400 font-mono">ID: {u.id}</div>
                       </td>
                       <td className="p-4">
@@ -1101,9 +1893,45 @@ export default function App() {
                         </span>
                       </td>
                       <td className="p-4 font-medium">{u.phoneNumber || '—'}</td>
-                      <td className="p-4 font-mono text-slate-500">password@1234</td>
+                      <td className="p-4">
+                        {u.isActivated ? (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                            <CheckCircle2 className="w-3 h-3 mr-1 text-emerald-600" /> Active
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                            {u.role === 'Patient' ? (
+                              <>
+                                <MessageSquare className="w-3 h-3 mr-1 text-amber-600" /> Pending First Login & Details
+                              </>
+                            ) : (
+                              <>
+                                <Mail className="w-3 h-3 mr-1 text-amber-600" /> Pending Activation
+                              </>
+                            )}
+                          </span>
+                        )}
+                      </td>
                       <td className="p-4 text-slate-400">{new Date(u.createdAt).toLocaleDateString()}</td>
                       <td className="p-4 text-right space-x-2">
+                        {/* If Patient: NO EMAIL ICON! Instead show Welcome SMS button */}
+                        {u.role === 'Patient' ? (
+                          <button
+                            onClick={() => handleResendActivation(u.id, u.email || '', u.fullName, u.role, u.phoneNumber)}
+                            className="text-teal-600 hover:text-teal-800 font-bold p-1"
+                            title="Send Welcome SMS / Mobile Login Notice"
+                          >
+                            <MessageSquare className="w-4 h-4 inline" />
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => handleResendActivation(u.id, u.email || '', u.fullName, u.role, u.phoneNumber)}
+                            className="text-amber-600 hover:text-amber-800 font-bold p-1"
+                            title={u.role === 'Therapist' ? "Resend Welcome Email (Mobile Login & 30-Day Biometrics)" : "Resend Activation / Password Reset Email"}
+                          >
+                            <Mail className="w-4 h-4 inline" />
+                          </button>
+                        )}
                         <button
                           onClick={() => {
                             setEditingUser({ ...u });
@@ -1195,19 +2023,19 @@ export default function App() {
         )}
 
         {/* ========================================================================= */}
-        {/* TAB 5: NEW PHONE BOOKING INTAKE (DESKBOY & ADMIN) */}
+        {/* TAB 5: NEW PATIENT REQUEST (DESKBOY & ADMIN) */}
         {/* ========================================================================= */}
         {activeTab === 'new-request' && (
           <div className="max-w-2xl mx-auto bg-white rounded-3xl border border-slate-200/80 p-8 shadow-xs space-y-6">
             <div>
-              <h2 className="text-xl font-black text-slate-900 tracking-tight">Create Front-Desk Phone Booking</h2>
-              <p className="text-xs text-slate-500 mt-0.5">Take an appointment request from a caller and immediately place it into the triage queue.</p>
+              <h2 className="text-xl font-black text-slate-900 tracking-tight">New Patient Request</h2>
+              <p className="text-xs text-slate-500 mt-0.5">Register a new patient and instantly create a pending triage request for clinical dispatch.</p>
             </div>
 
-            <form onSubmit={handleCreatePhoneRequest} className="space-y-4">
+            <form onSubmit={handleCreatePatientRequest} className="space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Patient Full Name</label>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Patient Full Name *</label>
                   <input
                     type="text"
                     value={newPatientName}
@@ -1218,7 +2046,7 @@ export default function App() {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Phone Number</label>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Phone Number *</label>
                   <input
                     type="text"
                     value={newPatientPhone}
@@ -1230,16 +2058,28 @@ export default function App() {
                 </div>
               </div>
 
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Home Address</label>
-                <input
-                  type="text"
-                  value={newAddress}
-                  onChange={e => setNewAddress(e.target.value)}
-                  placeholder="Street, Apartment / Flat No, Sector, City"
-                  required
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500"
-                />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Email Address (Optional)</label>
+                  <input
+                    type="email"
+                    value={newPatientEmail}
+                    onChange={e => setNewPatientEmail(e.target.value)}
+                    placeholder="rajesh.sharma@example.com"
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Home Address *</label>
+                  <input
+                    type="text"
+                    value={newAddress}
+                    onChange={e => setNewAddress(e.target.value)}
+                    placeholder="Indiranagar 100ft Road, Bengaluru"
+                    required
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  />
+                </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1297,44 +2137,9 @@ export default function App() {
                 type="submit"
                 className="w-full bg-teal-600 hover:bg-teal-700 text-white font-bold py-3 rounded-xl transition text-xs shadow-xs"
               >
-                Submit & Queue for Dispatch ➔
+                Register Patient & Create Triage Request ➔
               </button>
             </form>
-          </div>
-        )}
-
-        {/* ========================================================================= */}
-        {/* TAB 6: MOBILE APP SIMULATOR */}
-        {/* ========================================================================= */}
-        {activeTab === 'mobile-sim' && (
-          <div className="max-w-md mx-auto bg-slate-900 rounded-[40px] p-4 shadow-2xl border-4 border-slate-800">
-            <div className="bg-white rounded-[32px] overflow-hidden min-h-[600px] flex flex-col font-sans">
-              <div className="bg-teal-700 p-4 text-white flex items-center justify-between">
-                <div>
-                  <h3 className="font-bold text-sm">TherapyHub Mobile</h3>
-                  <p className="text-[10px] text-teal-200">Patient & Clinician Mobile Portal</p>
-                </div>
-                <span className="bg-teal-800/80 px-2 py-0.5 rounded text-[10px] font-mono">Expo Go</span>
-              </div>
-              <div className="p-6 text-center space-y-4 flex-1 flex flex-col justify-center items-center">
-                <div className="w-16 h-16 bg-teal-50 rounded-2xl flex items-center justify-center text-teal-600 mx-auto">
-                  <Smartphone className="w-8 h-8" />
-                </div>
-                <div>
-                  <h4 className="font-bold text-slate-800 text-base">Mobile App Running on Metro</h4>
-                  <p className="text-xs text-slate-500 max-w-xs mx-auto mt-1">
-                    Connect your real phone via Expo Go app, or test the responsive interface on port 8081.
-                  </p>
-                </div>
-                <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 text-left text-xs space-y-1 w-full">
-                  <p className="font-bold text-slate-700">Features Active:</p>
-                  <p className="text-slate-600">✓ Completed visits locked in read-only mode</p>
-                  <p className="text-slate-600">✓ All pricing in Rupees (₹ INR)</p>
-                  <p className="text-slate-600">✓ Fixed Discharge OTP: 8844</p>
-                  <p className="text-slate-600">✓ SignalR live real-time location & status</p>
-                </div>
-              </div>
-            </div>
           </div>
         )}
       </main>
@@ -1439,13 +2244,15 @@ export default function App() {
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Email Address</label>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  {newUserRole === 'Patient' ? 'Email Address (Optional - Not Required for Patients)' : 'Email Address *'}
+                </label>
                 <input
                   type="email"
                   value={newUserEmail}
                   onChange={e => setNewUserEmail(e.target.value)}
-                  placeholder="alex.desk@therapyhub.health"
-                  required
+                  placeholder={newUserRole === 'Patient' ? 'Optional (patients authenticate via Phone OTP)' : 'alex.desk@therapyhub.health'}
+                  required={newUserRole !== 'Patient'}
                   className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs"
                 />
               </div>
@@ -1454,7 +2261,13 @@ export default function App() {
                 <label className="block text-xs font-bold text-slate-700 mb-1">Role Type</label>
                 <select
                   value={newUserRole}
-                  onChange={e => setNewUserRole(e.target.value as any)}
+                  onChange={e => {
+                    const role = e.target.value as any;
+                    setNewUserRole(role);
+                    if (role === 'Patient' || role === 'Therapist') {
+                      setNewUserPassword('password@1234');
+                    }
+                  }}
                   className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold"
                 >
                   <option value="Dispatcher">🚴 DeskBoy (Front-Desk / Operations)</option>
@@ -1465,25 +2278,93 @@ export default function App() {
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Phone Number</label>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  {newUserRole === 'Patient' || newUserRole === 'Therapist' ? 'Mobile Phone Number * (Required for OTP Sign-In)' : 'Phone Number (Optional)'}
+                </label>
                 <input
                   type="text"
                   value={newUserPhone}
                   onChange={e => setNewUserPhone(e.target.value)}
                   placeholder="+91 98765 00000"
+                  required={newUserRole === 'Patient' || newUserRole === 'Therapist'}
                   className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Password</label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-bold text-slate-700">Initial Password</label>
+                  {(newUserRole === 'Patient' || newUserRole === 'Therapist') ? (
+                    <span className="text-[10px] text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md font-semibold border border-amber-200">
+                      🔒 Disabled for Mobile Roles (OTP Login)
+                    </span>
+                  ) : (
+                    <span className="text-[10px] text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-md font-semibold border border-indigo-200">
+                      🔓 Enabled for Staff Roles
+                    </span>
+                  )}
+                </div>
                 <input
                   type="text"
-                  value={newUserPassword}
+                  value={(newUserRole === 'Patient' || newUserRole === 'Therapist') ? 'password@1234' : newUserPassword}
+                  disabled={newUserRole === 'Patient' || newUserRole === 'Therapist'}
                   onChange={e => setNewUserPassword(e.target.value)}
                   placeholder="password@1234"
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono"
+                  className={`w-full px-3 py-2 border rounded-xl text-xs font-mono transition ${
+                    (newUserRole === 'Patient' || newUserRole === 'Therapist')
+                      ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed select-none'
+                      : 'bg-slate-50 text-slate-900 border-slate-200 focus:bg-white focus:border-indigo-500'
+                  }`}
                 />
+
+                {/* COMPACT PASSWORD STRENGTH CHECK FOR CUSTOM PASSWORD IN CREATE USER */}
+                {(newUserRole === 'Admin' || newUserRole === 'Dispatcher') && newUserPassword && newUserPassword !== 'password@1234' && (() => {
+                  const createPolicy = evaluatePasswordPolicy(newUserPassword);
+                  return (
+                    <div className="mt-2 p-2.5 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5 text-[10px]">
+                      <div className="flex items-center justify-between font-bold">
+                        <span className="text-slate-600">Password Policy Check:</span>
+                        <span className={createPolicy.textColor}>{createPolicy.label} ({createPolicy.score}/5)</span>
+                      </div>
+                      <div className="grid grid-cols-5 gap-1 h-1">
+                        {[1, 2, 3, 4, 5].map((lvl) => (
+                          <div
+                            key={lvl}
+                            className={`rounded-full ${
+                              lvl <= createPolicy.score ? createPolicy.barColor : 'bg-slate-200'
+                            }`}
+                          />
+                        ))}
+                      </div>
+                      <div className="grid grid-cols-2 gap-1 text-[10px] pt-1">
+                        <span className={createPolicy.hasMinLength ? 'text-emerald-700' : 'text-slate-400'}>
+                          {createPolicy.hasMinLength ? '✓' : '•'} 8+ Characters
+                        </span>
+                        <span className={createPolicy.hasUpper ? 'text-emerald-700' : 'text-slate-400'}>
+                          {createPolicy.hasUpper ? '✓' : '•'} Uppercase (A-Z)
+                        </span>
+                        <span className={createPolicy.hasLower ? 'text-emerald-700' : 'text-slate-400'}>
+                          {createPolicy.hasLower ? '✓' : '•'} Lowercase (a-z)
+                        </span>
+                        <span className={createPolicy.hasDigit ? 'text-emerald-700' : 'text-slate-400'}>
+                          {createPolicy.hasDigit ? '✓' : '•'} Number (0-9)
+                        </span>
+                        <span className={createPolicy.hasSpecial ? 'text-emerald-700' : 'text-slate-400'}>
+                          {createPolicy.hasSpecial ? '✓' : '•'} Special Symbol
+                        </span>
+                        <span className={createPolicy.isNotDefault ? 'text-emerald-700' : 'text-rose-600 font-bold'}>
+                          {createPolicy.isNotDefault ? '✓ Unique' : '✕ Default Password'}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                <p className="text-[10px] text-slate-500 mt-1">
+                  {(newUserRole === 'Patient' || newUserRole === 'Therapist')
+                    ? '🔒 Password field is disabled for Patients & Therapists. Mobile users authenticate via OTP. Password is saved as salt & hash of password@1234.'
+                    : '🔑 Password field is enabled for Admin & DeskBoy. Leave blank for default password@1234 or set custom compliant password. User will receive an activation email link to set/reset password.'}
+                </p>
               </div>
 
               {newUserRole === 'Therapist' && (
@@ -1579,13 +2460,37 @@ export default function App() {
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Password</label>
-                <input
-                  type="text"
-                  value={editingUser.passwordHash || 'password@1234'}
-                  onChange={e => setEditingUser({ ...editingUser, passwordHash: e.target.value })}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono"
-                />
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-bold text-slate-700">Password</label>
+                  <span className="text-[10px] text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md font-medium border border-slate-200">
+                    🔒 Non-Editable
+                  </span>
+                </div>
+                <div className="relative">
+                  <input
+                    type="text"
+                    disabled
+                    readOnly
+                    value="•••••••• (Encrypted with Salt & Hash)"
+                    className="w-full px-3 py-2 bg-slate-100 text-slate-500 border border-slate-200 rounded-xl text-xs font-mono cursor-not-allowed select-none pr-28"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (editingUser) {
+                        handleResendActivation(editingUser.id, editingUser.email, editingUser.fullName);
+                      }
+                    }}
+                    className="absolute right-1.5 top-1.5 px-2 py-1 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg text-[10px] font-bold text-indigo-600 transition flex items-center space-x-1 shadow-xs"
+                    title="Send reset password email to this user"
+                  >
+                    <Mail className="w-3 h-3" />
+                    <span>Send Reset</span>
+                  </button>
+                </div>
+                <p className="text-[10px] text-slate-400 mt-1">
+                  Password cannot be edited directly in the web application for security. To update password, dispatch a password reset activation link.
+                </p>
               </div>
 
               <div className="flex items-center justify-end space-x-2 pt-3 border-t border-slate-100">
@@ -1764,6 +2669,11 @@ export default function App() {
           </div>
         </div>
       )}
+
+      {/* RENDER MODALS: ACTIVATION DISPATCH, RESET PASSWORD, AND REQUEST RESET */}
+      {renderActivationDispatchedModal()}
+      {renderResetPasswordModal()}
+      {renderRequestResetModal()}
     </div>
   );
 }

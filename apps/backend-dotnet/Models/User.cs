@@ -45,5 +45,7 @@ public class User
 
     public bool IsActivated { get; set; } = false;
 
+    public string? PreviousPasswordsJson { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }

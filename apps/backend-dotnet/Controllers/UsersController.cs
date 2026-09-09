@@ -19,7 +19,7 @@ public class UsersController : ControllerBase
 
     public record CreateUserDto(
         string FullName,
-        string Email,
+        string? Email,
         string? PhoneNumber,
         string Role,
         string? Password,
@@ -36,7 +36,8 @@ public class UsersController : ControllerBase
         string? MedicalConditions,
         string? BloodGroup,
         string? EmergencyContactName,
-        string? EmergencyContactPhone
+        string? EmergencyContactPhone,
+        bool? IsActivated
     );
 
     [HttpGet]
@@ -95,21 +96,39 @@ public class UsersController : ControllerBase
     [HttpPost]
     public async Task<IActionResult> CreateUser([FromBody] CreateUserDto dto)
     {
-        if (string.IsNullOrWhiteSpace(dto.FullName) || string.IsNullOrWhiteSpace(dto.Email))
+        if (string.IsNullOrWhiteSpace(dto.FullName))
         {
-            return BadRequest(new { message = "Full Name and Email are required." });
-        }
-
-        var cleanEmail = dto.Email.Trim().ToLower();
-        var existing = await _context.Users.AnyAsync(u => u.Email != null && u.Email.ToLower() == cleanEmail);
-        if (existing)
-        {
-            return BadRequest(new { message = $"User with email '{dto.Email}' already exists." });
+            return BadRequest(new { message = "Full Name is required." });
         }
 
         if (!Enum.TryParse<UserRole>(dto.Role, true, out var role))
         {
             role = UserRole.Patient;
+        }
+
+        // Email is mandatory for Therapist, Admin, and Dispatcher. Email is NOT mandatory for Patients!
+        string? cleanEmail = null;
+        if (!string.IsNullOrWhiteSpace(dto.Email))
+        {
+            cleanEmail = dto.Email.Trim().ToLower();
+            var existing = await _context.Users.AnyAsync(u => u.Email != null && u.Email.ToLower() == cleanEmail);
+            if (existing)
+            {
+                return BadRequest(new { message = $"User with email '{dto.Email}' already exists." });
+            }
+        }
+        else if (role != UserRole.Patient)
+        {
+            return BadRequest(new { message = $"Email address is required for {role} accounts." });
+        }
+
+        // Phone number is required for mobile roles (Patient and Therapist)
+        if (role == UserRole.Patient || role == UserRole.Therapist)
+        {
+            if (string.IsNullOrWhiteSpace(dto.PhoneNumber))
+            {
+                return BadRequest(new { message = $"Mobile phone number is required for {role} accounts." });
+            }
         }
 
         var prefix = role switch
@@ -123,13 +142,30 @@ public class UsersController : ControllerBase
         // Password handling:
         // Patients and Therapists authenticate primarily via Mobile OTP; initial default is "password@1234"
         // Non-Patients / Non-Therapists (Admin, DeskBoy) have password field enabled in UI; defaults to "password@1234" if left blank
-        var rawPassword = (role == UserRole.Patient || role == UserRole.Therapist)
-            ? "password@1234"
-            : (!string.IsNullOrWhiteSpace(dto.Password) ? dto.Password.Trim() : "password@1234");
+        var rawPassword = "password@1234";
+        if (role == UserRole.Admin || role == UserRole.Dispatcher)
+        {
+            if (!string.IsNullOrWhiteSpace(dto.Password))
+            {
+                var trimmedPass = dto.Password.Trim();
+                if (trimmedPass != "password@1234")
+                {
+                    var policyResult = PasswordSecurity.ValidatePolicy(trimmedPass);
+                    if (!policyResult.IsValid)
+                    {
+                        return BadRequest(new
+                        {
+                            message = policyResult.Errors.First(),
+                            errors = policyResult.Errors
+                        });
+                    }
+                }
+                rawPassword = trimmedPass;
+            }
+        }
 
         // Encrypt password using cryptographic salt and hash
         var hashedPassword = PasswordSecurity.HashPassword(rawPassword);
-
         var activationToken = Guid.NewGuid().ToString("N");
 
         var user = new User
@@ -142,7 +178,8 @@ public class UsersController : ControllerBase
             PasswordHash = hashedPassword,
             ActivationToken = activationToken,
             ActivationTokenExpiresAt = DateTime.UtcNow.AddDays(7),
-            IsActivated = false,
+            // Patient accounts start as inactive until basic details are provided on first login
+            IsActivated = (role != UserRole.Patient),
             CreatedAt = DateTime.UtcNow
         };
 
@@ -161,8 +198,8 @@ public class UsersController : ControllerBase
                 Rating = 4.9,
                 ReviewCount = 10,
                 IsAvailable = true,
-                CurrentLatitude = 28.6139,
-                CurrentLongitude = 77.2090,
+                CurrentLatitude = 12.9716,
+                CurrentLongitude = 77.5946,
                 ServiceRadiusKm = 20.0
             };
             _context.TherapistProfiles.Add(profile);
@@ -170,24 +207,42 @@ public class UsersController : ControllerBase
 
         await _context.SaveChangesAsync();
 
-        var activationLink = $"http://localhost:3000/?action=reset-password&token={user.ActivationToken}&email={Uri.EscapeDataString(user.Email)}";
-        var emailNotification = $"[ACTIVATION EMAIL to {user.Email}]: Welcome to TherapyHub, {user.FullName}! Your account has been registered with role {user.Role}. Click this link to set your secure password and activate your account:\n{activationLink}\n(Link is valid for 7 days).";
+        string? activationLink = null;
+        string? welcomeEmail = null;
+        string? welcomeSms = null;
 
-        var notificationMessage = !string.IsNullOrWhiteSpace(user.PhoneNumber)
-            ? $"[SMS Sent to {user.PhoneNumber}]: Welcome to TherapyHub, {user.FullName}! Your account has been registered. Download the mobile app and log in with {user.PhoneNumber} using OTP (1234)."
-            : $"[Notification queued]: Welcome to TherapyHub, {user.FullName}!";
-
-        Console.WriteLine($"[EMAIL-DISPATCH] {emailNotification}");
-        Console.WriteLine($"[SMS-DISPATCH] {notificationMessage}");
+        if (role == UserRole.Therapist)
+        {
+            welcomeEmail = $"Welcome to TherapyHub, {user.FullName}!\n\nYour certified clinician account has been registered by the administrator. You can now login using your mobile number: {user.PhoneNumber} with OTP (1234).\n\nOnce logged in, biometric authentication will be enabled for 30 days.";
+            welcomeSms = $"Welcome to TherapyHub, {user.FullName}! Your therapist account is ready. Log in to the mobile app with {user.PhoneNumber} using OTP (1234).";
+            Console.WriteLine($"[WELCOME-EMAIL to {user.Email}]: {welcomeEmail}");
+            Console.WriteLine($"[SMS-DISPATCH] {welcomeSms}");
+        }
+        else if (role == UserRole.Patient)
+        {
+            welcomeSms = $"Welcome to TherapyHub, {user.FullName}! Your patient profile has been registered by the Care Desk. You can now login with your mobile number: {user.PhoneNumber} using OTP (1234). On your first login, please provide your basic details to activate your account.";
+            Console.WriteLine($"[WELCOME-SMS to {user.PhoneNumber}]: {welcomeSms}");
+        }
+        else
+        {
+            activationLink = $"http://localhost:3000/?action=reset-password&token={user.ActivationToken}&email={Uri.EscapeDataString(user.Email ?? "")}";
+            welcomeEmail = $"[ACTIVATION EMAIL to {user.Email}]: Welcome to TherapyHub, {user.FullName}! Your account has been registered with role {user.Role}. Click this link to set your secure password and activate your account:\n{activationLink}\n(Link is valid for 7 days).";
+            Console.WriteLine($"[EMAIL-DISPATCH] {welcomeEmail}");
+        }
 
         return Ok(new { 
             success = true, 
-            message = $"User {user.FullName} created successfully. Activation email dispatched.", 
+            message = role == UserRole.Patient 
+                ? $"Patient {user.FullName} registered successfully. Welcome SMS dispatched to {user.PhoneNumber}."
+                : role == UserRole.Therapist
+                ? $"Therapist {user.FullName} registered successfully. Welcome email dispatched to {user.Email}."
+                : $"User {user.FullName} created successfully. Activation email dispatched.", 
+            role = user.Role.ToString(),
+            welcomeEmail,
+            welcomeSms,
             activationLink,
             activationToken,
-            emailDispatched = true,
-            emailNotification,
-            notification = notificationMessage,
+            emailDispatched = (role != UserRole.Patient),
             user = new
             {
                 user.Id,
@@ -210,7 +265,6 @@ public class UsersController : ControllerBase
         if (!string.IsNullOrWhiteSpace(dto.FullName)) user.FullName = dto.FullName.Trim();
         if (!string.IsNullOrWhiteSpace(dto.Email)) user.Email = dto.Email.Trim().ToLower();
         if (!string.IsNullOrWhiteSpace(dto.PhoneNumber)) user.PhoneNumber = dto.PhoneNumber.Trim();
-        // NOTE: Password is intentionally NOT updated here. Passwords are non-editable via web application profile update form.
         if (!string.IsNullOrWhiteSpace(dto.MedicalConditions)) user.MedicalConditions = dto.MedicalConditions.Trim();
         if (!string.IsNullOrWhiteSpace(dto.BloodGroup)) user.BloodGroup = dto.BloodGroup.Trim();
         if (!string.IsNullOrWhiteSpace(dto.EmergencyContactName)) user.EmergencyContactName = dto.EmergencyContactName.Trim();
@@ -220,10 +274,20 @@ public class UsersController : ControllerBase
             user.Role = role;
         }
 
+        if (dto.IsActivated.HasValue)
+        {
+            user.IsActivated = dto.IsActivated.Value;
+        }
+        else if (user.Role == UserRole.Patient && !string.IsNullOrWhiteSpace(user.FullName) && !string.IsNullOrWhiteSpace(user.EmergencyContactName))
+        {
+            // Patient provided mandatory basic details -> activate profile!
+            user.IsActivated = true;
+        }
+
         await _context.SaveChangesAsync();
         return Ok(new { 
             success = true, 
-            message = "User updated successfully.", 
+            message = "User profile updated successfully.", 
             user = new
             {
                 user.Id,
@@ -242,23 +306,52 @@ public class UsersController : ControllerBase
     {
         var user = await _context.Users.FindAsync(id);
         if (user == null) return NotFound(new { message = "User not found." });
-        if (string.IsNullOrWhiteSpace(user.Email)) return BadRequest(new { message = "User has no email address." });
 
-        user.ActivationToken = Guid.NewGuid().ToString("N");
-        user.ActivationTokenExpiresAt = DateTime.UtcNow.AddDays(7);
-        await _context.SaveChangesAsync();
-
-        var activationLink = $"http://localhost:3000/?action=reset-password&token={user.ActivationToken}&email={Uri.EscapeDataString(user.Email)}";
-        var emailNotification = $"[ACTIVATION EMAIL to {user.Email}]: Reset your password at {activationLink}";
-        Console.WriteLine($"[EMAIL-DISPATCH] {emailNotification}");
-
-        return Ok(new
+        if (user.Role == UserRole.Therapist)
         {
-            success = true,
-            message = $"Activation email dispatched to {user.Email}.",
-            activationLink,
-            token = user.ActivationToken
-        });
+            var welcomeEmail = $"Welcome to TherapyHub, {user.FullName}!\n\nYour clinician account has been registered by the administrator. You can now login using your mobile number: {user.PhoneNumber} with OTP (1234).\n\nOnce logged in, biometric authentication will be enabled for 30 days.";
+            Console.WriteLine($"[RESEND WELCOME-EMAIL to {user.Email}]: {welcomeEmail}");
+            return Ok(new
+            {
+                success = true,
+                message = $"Welcome email sent to {user.Email} with mobile login instructions.",
+                role = "Therapist",
+                welcomeEmail
+            });
+        }
+        else if (user.Role == UserRole.Patient)
+        {
+            var welcomeSms = $"Welcome to TherapyHub, {user.FullName}! Your patient profile has been registered by the Care Desk. You can now login with your mobile number: {user.PhoneNumber} using OTP (1234). On your first login, please provide your basic details to activate your account.";
+            Console.WriteLine($"[RESEND WELCOME-SMS to {user.PhoneNumber}]: {welcomeSms}");
+            return Ok(new
+            {
+                success = true,
+                message = $"Welcome SMS dispatched to {user.PhoneNumber}.",
+                role = "Patient",
+                welcomeSms
+            });
+        }
+        else
+        {
+            if (string.IsNullOrWhiteSpace(user.Email)) return BadRequest(new { message = "User has no email address." });
+            user.ActivationToken = Guid.NewGuid().ToString("N");
+            user.ActivationTokenExpiresAt = DateTime.UtcNow.AddDays(7);
+            await _context.SaveChangesAsync();
+
+            var activationLink = $"http://localhost:3000/?action=reset-password&token={user.ActivationToken}&email={Uri.EscapeDataString(user.Email)}";
+            var emailNotification = $"[ACTIVATION EMAIL to {user.Email}]: Reset your password at {activationLink}";
+            Console.WriteLine($"[EMAIL-DISPATCH] {emailNotification}");
+
+            return Ok(new
+            {
+                success = true,
+                message = $"Activation email dispatched to {user.Email}.",
+                role = user.Role.ToString(),
+                activationLink,
+                token = user.ActivationToken,
+                emailNotification
+            });
+        }
     }
 
     [HttpDelete("{id}")]

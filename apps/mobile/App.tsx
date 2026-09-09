@@ -164,6 +164,7 @@ export default function App() {
     userName: string;
     phoneNumber: string;
     role: 'PATIENT' | 'THERAPIST';
+    isActivated: boolean;
     lastOtpVerifiedAt: number;
     biometricEnabled: boolean;
   } | null>({
@@ -172,13 +173,27 @@ export default function App() {
     userName: 'Rajesh Sharma',
     phoneNumber: '+91 91234 56789',
     role: 'PATIENT',
-    lastOtpVerifiedAt: Date.now() - (1 * 24 * 60 * 60 * 1000), // 1 day ago (29 days remaining)
+    isActivated: true,
+    lastOtpVerifiedAt: Date.now() - (1 * 24 * 60 * 60 * 1000), // 1 day ago
     biometricEnabled: true,
   });
 
   // State flag to simulate 30-day lease expiration for immediate testing
   const [isLeaseSimulatedExpired, setIsLeaseSimulatedExpired] = useState<boolean>(false);
   const [showBiometricEnrollModal, setShowBiometricEnrollModal] = useState<boolean>(false);
+
+  // Mandatory First-Login Patient Details Modal State
+  const [showMandatoryDetailsModal, setShowMandatoryDetailsModal] = useState<boolean>(false);
+  const [mandatoryName, setMandatoryName] = useState<string>('');
+  const [mandatoryAge, setMandatoryAge] = useState<string>('38');
+  const [mandatoryGender, setMandatoryGender] = useState<'Male' | 'Female' | 'Other'>('Male');
+  const [mandatoryAddress, setMandatoryAddress] = useState<string>('Flat 402, Palm Heights, Indiranagar, Bengaluru');
+  const [mandatoryEmergencyName, setMandatoryEmergencyName] = useState<string>('Pooja Sharma');
+  const [mandatoryEmergencyPhone, setMandatoryEmergencyPhone] = useState<string>('+91 98765 43210');
+  const [mandatoryBloodGroup, setMandatoryBloodGroup] = useState<string>('B+');
+  const [mandatoryConditions, setMandatoryConditions] = useState<string[]>(['None / Healthy']);
+  const [mandatoryEmail, setMandatoryEmail] = useState<string>('');
+  const [doctorSearchQuery, setDoctorSearchQuery] = useState<string>('');
 
   // New Patient Registration State (Adaptive Onboarding)
   const [regFullName, setRegFullName] = useState<string>('');
@@ -640,6 +655,9 @@ export default function App() {
 
         setRoleMode(userRole);
 
+        // Therapist accounts are pre-activated. Patients are activated once mandatory basic details are completed.
+        const isUserActivated = userRole === 'THERAPIST' ? true : (u.isActivated === true);
+
         if (userRole === 'PATIENT') {
           setPatientProfile(prev => ({
             ...prev,
@@ -664,23 +682,39 @@ export default function App() {
           userName: u.fullName || (userRole === 'THERAPIST' ? 'Dr. Sarah Jenkins' : 'Patient'),
           phoneNumber: u.phoneNumber || authPhone,
           role: userRole,
+          isActivated: isUserActivated,
           lastOtpVerifiedAt: Date.now(),
           biometricEnabled: true,
         };
         setSessionLease(newLease);
         setIsLeaseSimulatedExpired(false);
 
-        // Directly authenticate user into role dashboard - no upfront blocking profile registration!
+        // Authenticate into dashboard
         setIsAuthenticated(true);
 
-        // Prompt user to enable Biometric 1-tap access
-        setShowBiometricEnrollModal(true);
-
-        showToast(
-          'SUCCESS', 
-          userRole === 'THERAPIST' ? '🩺 Clinician Verified' : '👤 Patient Verified', 
-          `Welcome, ${newLease.userName}! Phone verified.`
-        );
+        if (userRole === 'PATIENT' && !isUserActivated) {
+          // Patient First Login: Mandatory Basic Details Setup!
+          const fallbackName = (u.fullName && !u.fullName.startsWith('Patient ')) ? u.fullName : '';
+          setMandatoryName(fallbackName);
+          setMandatoryEmergencyName(u.emergencyContactName || '');
+          setMandatoryEmergencyPhone(u.emergencyContactPhone || '');
+          setMandatoryBloodGroup(u.bloodGroup || 'O+');
+          setMandatoryEmail((u.email && !u.email.endsWith('@therapyhub.health')) ? u.email : '');
+          setShowMandatoryDetailsModal(true);
+          showToast(
+            'INFO', 
+            'Mandatory Profile Setup', 
+            'Welcome to TherapyHub! Please complete your basic details to activate your account.'
+          );
+        } else {
+          // Prompt user to enable Biometric 1-tap access
+          setShowBiometricEnrollModal(true);
+          showToast(
+            'SUCCESS', 
+            userRole === 'THERAPIST' ? '🩺 Clinician Verified' : '👤 Patient Verified', 
+            `Welcome, ${newLease.userName}! Phone verified.`
+          );
+        }
         refreshActiveData(newLease);
       } else {
         showToast('ERROR', 'Verification Failed', data.message || 'Invalid OTP code.');
@@ -733,13 +767,14 @@ export default function App() {
         }));
         setRoleMode('PATIENT');
 
-        // Create 30-Day Biometric Session Lease
+        // Create 30-Day Biometric Session Lease (new patient registering full details is activated)
         setSessionLease({
           active: true,
           userId: data.user.id,
           userName: data.user.fullName,
           phoneNumber: data.user.phoneNumber,
           role: 'PATIENT',
+          isActivated: true,
           lastOtpVerifiedAt: Date.now(),
           biometricEnabled: true,
         });
@@ -768,6 +803,76 @@ export default function App() {
     }
   };
 
+  // 3B. Mandatory Profile Details Handler for First-Time Patient Login
+  const handleSaveMandatoryDetails = async () => {
+    if (!mandatoryName.trim()) {
+      showToast('WARNING', 'Name Required', 'Please enter your full legal name.');
+      return;
+    }
+    if (!mandatoryAge.trim()) {
+      showToast('WARNING', 'Age Required', 'Please enter your age.');
+      return;
+    }
+    if (!mandatoryAddress.trim()) {
+      showToast('WARNING', 'Address Required', 'Please enter your in-home visit address.');
+      return;
+    }
+    if (!mandatoryEmergencyName.trim() || !mandatoryEmergencyPhone.trim()) {
+      showToast('WARNING', 'Emergency Contact Required', 'Please enter emergency contact name and phone number.');
+      return;
+    }
+
+    setAuthLoading(true);
+    try {
+      if (sessionLease?.userId) {
+        await fetch(`${API_BASE}/users/${sessionLease.userId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            fullName: mandatoryName.trim(),
+            phoneNumber: sessionLease.phoneNumber,
+            email: mandatoryEmail.trim() ? mandatoryEmail.trim() : undefined,
+            emergencyContactName: mandatoryEmergencyName.trim(),
+            emergencyContactPhone: mandatoryEmergencyPhone.trim(),
+            medicalConditions: mandatoryConditions.join(', '),
+            bloodGroup: mandatoryBloodGroup,
+            isActivated: true
+          })
+        });
+      }
+
+      setPatientProfile(prev => ({
+        ...prev,
+        fullName: mandatoryName.trim(),
+        age: mandatoryAge.trim(),
+        gender: mandatoryGender,
+        primaryAddress: mandatoryAddress.trim(),
+        emergencyName: mandatoryEmergencyName.trim(),
+        emergencyPhone: mandatoryEmergencyPhone.trim(),
+        bloodGroup: mandatoryBloodGroup,
+        conditions: mandatoryConditions,
+        email: mandatoryEmail.trim() || prev.email
+      }));
+
+      setSessionLease(prev => prev ? {
+        ...prev,
+        userName: mandatoryName.trim(),
+        isActivated: true
+      } : null);
+
+      setShowMandatoryDetailsModal(false);
+      setShowBiometricEnrollModal(true);
+      showToast('SUCCESS', '🎉 Profile Activated!', 'Your patient account is now activated. Doctor search and appointment booking unlocked!');
+    } catch {
+      setSessionLease(prev => prev ? { ...prev, isActivated: true } : null);
+      setShowMandatoryDetailsModal(false);
+      setShowBiometricEnrollModal(true);
+      showToast('SUCCESS', 'Profile Activated', 'Basic details saved (local mode).');
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
   // 4. Biometric 1-Tap Unlock (Checks 30-day lease validity & auto-routes role)
   const handleBiometricUnlock = () => {
     if (!isLeaseValid()) {
@@ -791,6 +896,9 @@ export default function App() {
               fullName: sessionLease.userName,
               phone: sessionLease.phoneNumber
             }));
+            if (!sessionLease.isActivated) {
+              setShowMandatoryDetailsModal(true);
+            }
           }
         }
         showToast(
@@ -1600,21 +1708,89 @@ export default function App() {
                 </TouchableOpacity>
               </View>
 
-              {/* SECTION 1: SELECT SPECIALTY */}
+              {/* MANDATORY DETAILS ACTIVATION WARNING BANNER */}
+              {!sessionLease?.isActivated && (
+                <View style={styles.activationWarningBox}>
+                  <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
+                    <Text style={{ fontSize: 24, marginRight: 10, marginTop: 2 }}>⚠️</Text>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.activationWarningTitle}>Profile Inactive - Mandatory Details Required</Text>
+                      <Text style={styles.activationWarningSub}>
+                        You must provide your basic details (full name, address, emergency contact, precautions) before searching doctors or scheduling visits.
+                      </Text>
+                    </View>
+                  </View>
+                  <TouchableOpacity
+                    style={styles.activationWarningBtn}
+                    onPress={() => setShowMandatoryDetailsModal(true)}
+                  >
+                    <Text style={styles.activationWarningBtnText}>👉 Complete Mandatory Details & Activate Profile ➔</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+
+              {/* SECTION 1: SELECT SPECIALTY & DOCTOR SEARCH */}
               <View style={styles.sectionWrapper}>
                 <View style={styles.sectionHeaderRow}>
-                  <Text style={styles.sectionTitle}>1. Select Therapy Specialty</Text>
+                  <Text style={styles.sectionTitle}>1. Select Specialty & Visiting Doctor</Text>
                   <Text style={styles.sectionHint}>45-60 min care</Text>
                 </View>
 
+                {/* DOCTOR & SPECIALTY SEARCH INPUT */}
+                <View style={styles.doctorSearchBox}>
+                  <View style={styles.doctorSearchRow}>
+                    <Text style={{ fontSize: 15, marginRight: 8 }}>🔍</Text>
+                    <TextInput
+                      style={styles.doctorSearchInput}
+                      value={doctorSearchQuery}
+                      onChangeText={(t) => {
+                        if (!sessionLease?.isActivated) {
+                          setShowMandatoryDetailsModal(true);
+                          showToast('WARNING', 'Profile Activation Required', 'Please complete mandatory basic details to search doctors.');
+                          return;
+                        }
+                        setDoctorSearchQuery(t);
+                      }}
+                      onFocus={() => {
+                        if (!sessionLease?.isActivated) {
+                          setShowMandatoryDetailsModal(true);
+                          showToast('WARNING', 'Profile Activation Required', 'Please complete mandatory basic details to search doctors.');
+                        }
+                      }}
+                      placeholder="Search visiting doctors or specialties (e.g., Sarah, Orthopedic)..."
+                      placeholderTextColor="#94a3b8"
+                    />
+                    {doctorSearchQuery.length > 0 && (
+                      <TouchableOpacity onPress={() => setDoctorSearchQuery('')}>
+                        <Text style={{ fontSize: 14, color: '#94a3b8', padding: 4 }}>✕</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                </View>
+
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoryScroll}>
-                  {THERAPY_CATEGORIES.map((cat) => {
+                  {THERAPY_CATEGORIES
+                    .filter(cat => {
+                      if (!doctorSearchQuery.trim()) return true;
+                      const q = doctorSearchQuery.toLowerCase();
+                      return cat.name.toLowerCase().includes(q) ||
+                             (cat.description && cat.description.toLowerCase().includes(q)) ||
+                             'dr. sarah jenkins dr. marcus vance certified physiotherapist'.includes(q);
+                    })
+                    .map((cat) => {
                     const isSelected = selectedCategory.id === cat.id;
                     return (
                       <TouchableOpacity 
                         key={cat.id} 
                         style={[styles.categoryCard, isSelected && styles.categoryCardSelected]}
-                        onPress={() => setSelectedCategory(cat)}
+                        onPress={() => {
+                          if (!sessionLease?.isActivated) {
+                            setShowMandatoryDetailsModal(true);
+                            showToast('WARNING', 'Profile Activation Required', 'Please complete mandatory basic details to choose a specialty.');
+                            return;
+                          }
+                          setSelectedCategory(cat);
+                        }}
                       >
                         <View style={styles.categoryCardHeader}>
                           <Text style={styles.categoryIconEmoji}>
@@ -1874,12 +2050,26 @@ export default function App() {
                 </View>
 
                 {/* BIG ACTION BUTTON */}
-                <TouchableOpacity style={styles.bookButton} onPress={handleSubmitRequest}>
+                <TouchableOpacity 
+                  style={[styles.bookButton, !sessionLease?.isActivated && { backgroundColor: '#94a3b8' }]} 
+                  onPress={() => {
+                    if (!sessionLease?.isActivated) {
+                      setShowMandatoryDetailsModal(true);
+                      showToast('WARNING', 'Profile Activation Required', 'Please complete your mandatory basic details before scheduling a visit.');
+                      return;
+                    }
+                    handleSubmitRequest();
+                  }}
+                >
                   <Text style={styles.bookButtonText}>
-                    Confirm In-Home Visit (₹{selectedCategory.basePriceINR || selectedCategory.basePriceUSD}.00) →
+                    {!sessionLease?.isActivated 
+                      ? '🔒 Complete Basic Details to Activate & Book' 
+                      : `Confirm In-Home Visit (₹${selectedCategory.basePriceINR || selectedCategory.basePriceUSD}.00) →`}
                   </Text>
                   <Text style={styles.bookButtonSub}>
-                    {selectedDate.dayName} at {selectedTimeSlot} • Free Cancellation
+                    {!sessionLease?.isActivated 
+                      ? 'Mandatory clinical details required on first login' 
+                      : `${selectedDate.dayName} at ${selectedTimeSlot} • Free Cancellation`}
                   </Text>
                 </TouchableOpacity>
               </View>
@@ -2728,6 +2918,187 @@ export default function App() {
         >
           <Text style={styles.authTextBtnLabel}>Skip for Now</Text>
         </TouchableOpacity>
+      </View>
+    </View>
+  </Modal>
+
+  {/* ========================================================================= */}
+  {/* 0C. MANDATORY PATIENT PROFILE DETAILS MODAL (FIRST LOGIN ACTIVATION) */}
+  {/* ========================================================================= */}
+  <Modal
+    visible={showMandatoryDetailsModal}
+    transparent
+    animationType="slide"
+    onRequestClose={() => {
+      showToast('WARNING', 'Mandatory Setup', 'Please complete your basic details to activate your profile.');
+    }}
+  >
+    <View style={styles.modalOverlay}>
+      <View style={[styles.modalCard, { maxHeight: '92%', padding: 20 }]}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
+          <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: '#ccfbf1', alignItems: 'center', justifyContent: 'center', marginRight: 10 }}>
+            <Text style={{ fontSize: 22 }}>📋</Text>
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 17, fontWeight: 'bold', color: '#0f172a' }}>
+              Mandatory Patient Profile
+            </Text>
+            <Text style={{ fontSize: 12, color: '#0d9488', fontWeight: '600' }}>
+              First-Time Activation Setup
+            </Text>
+          </View>
+        </View>
+
+        <Text style={{ fontSize: 12, color: '#64748b', marginBottom: 12, lineHeight: 17 }}>
+          To search verified physiotherapists and schedule home visits, clinical regulations require completing your basic details. Email is optional.
+        </Text>
+
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }}>
+          {/* Full Name */}
+          <Text style={styles.authFieldLabel}>Full Legal Name *</Text>
+          <TextInput
+            style={styles.authTextInput}
+            value={mandatoryName}
+            onChangeText={setMandatoryName}
+            placeholder="e.g. Ramesh Kumar"
+            placeholderTextColor="#94a3b8"
+          />
+
+          {/* Age & Gender */}
+          <View style={{ flexDirection: 'row', gap: 10, marginTop: 4 }}>
+            <View style={{ width: 100 }}>
+              <Text style={styles.authFieldLabel}>Age *</Text>
+              <TextInput
+                style={styles.authTextInput}
+                value={mandatoryAge}
+                onChangeText={setMandatoryAge}
+                keyboardType="number-pad"
+                placeholder="35"
+                placeholderTextColor="#94a3b8"
+              />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.authFieldLabel}>Gender *</Text>
+              <View style={{ flexDirection: 'row', gap: 6, marginTop: 2 }}>
+                {(['Male', 'Female', 'Other'] as const).map(g => (
+                  <TouchableOpacity
+                    key={g}
+                    style={[
+                      { flex: 1, paddingVertical: 10, borderRadius: 10, borderWidth: 1, borderColor: '#e2e8f0', alignItems: 'center', backgroundColor: '#f8fafc' },
+                      mandatoryGender === g && { borderColor: '#0d9488', backgroundColor: '#f0fdfa' }
+                    ]}
+                    onPress={() => setMandatoryGender(g)}
+                  >
+                    <Text style={[
+                      { fontSize: 11, fontWeight: '600', color: '#64748b' },
+                      mandatoryGender === g && { color: '#0d9488', fontWeight: 'bold' }
+                    ]}>
+                      {g}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+          </View>
+
+          {/* In-Home Address */}
+          <Text style={[styles.authFieldLabel, { marginTop: 12 }]}>In-Home Delivery / Visit Address *</Text>
+          <TextInput
+            style={[styles.authTextInput, { height: 60 }]}
+            value={mandatoryAddress}
+            onChangeText={setMandatoryAddress}
+            placeholder="Flat/House No., Building Name, Street, Indiranagar, Bengaluru"
+            placeholderTextColor="#94a3b8"
+            multiline
+          />
+
+          {/* Emergency Contact */}
+          <Text style={[styles.authFieldLabel, { marginTop: 12 }]}>Emergency Contact Person *</Text>
+          <TextInput
+            style={styles.authTextInput}
+            value={mandatoryEmergencyName}
+            onChangeText={setMandatoryEmergencyName}
+            placeholder="e.g. Pooja Sharma (Spouse / Relative)"
+            placeholderTextColor="#94a3b8"
+          />
+
+          <Text style={[styles.authFieldLabel, { marginTop: 8 }]}>Emergency Contact Phone *</Text>
+          <TextInput
+            style={styles.authTextInput}
+            value={mandatoryEmergencyPhone}
+            onChangeText={setMandatoryEmergencyPhone}
+            keyboardType="phone-pad"
+            placeholder="+91 98765 43210"
+            placeholderTextColor="#94a3b8"
+          />
+
+          {/* Blood Group */}
+          <Text style={[styles.authFieldLabel, { marginTop: 12 }]}>Blood Group *</Text>
+          <View style={styles.regPillRow}>
+            {BLOOD_GROUPS.map(bg => (
+              <TouchableOpacity
+                key={bg}
+                style={[styles.regBgPill, mandatoryBloodGroup === bg && styles.regBgPillActive]}
+                onPress={() => setMandatoryBloodGroup(bg)}
+              >
+                <Text style={[styles.regBgPillText, mandatoryBloodGroup === bg && styles.regBgPillTextActive]}>
+                  {bg}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          {/* Chronic Medical Conditions */}
+          <Text style={[styles.authFieldLabel, { marginTop: 12 }]}>Medical Precautions & History</Text>
+          <View style={styles.regChipWrap}>
+            {CHRONIC_CONDITIONS.map(cond => {
+              const isSelected = mandatoryConditions.includes(cond);
+              return (
+                <TouchableOpacity
+                  key={cond}
+                  style={[styles.regCondChip, isSelected && styles.regCondChipActive]}
+                  onPress={() => {
+                    if (cond === 'None / Healthy') {
+                      setMandatoryConditions(['None / Healthy']);
+                      return;
+                    }
+                    const filtered = mandatoryConditions.filter(c => c !== 'None / Healthy');
+                    if (filtered.includes(cond)) {
+                      setMandatoryConditions(filtered.filter(c => c !== cond));
+                    } else {
+                      setMandatoryConditions([...filtered, cond]);
+                    }
+                  }}
+                >
+                  <Text style={[styles.regCondChipText, isSelected && styles.regCondChipTextActive]}>
+                    {cond}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          {/* Email Address (Optional) */}
+          <Text style={[styles.authFieldLabel, { marginTop: 12 }]}>Email Address (Optional - Not Required)</Text>
+          <TextInput
+            style={styles.authTextInput}
+            value={mandatoryEmail}
+            onChangeText={setMandatoryEmail}
+            keyboardType="email-address"
+            placeholder="Optional for receipt copies"
+            placeholderTextColor="#94a3b8"
+          />
+
+          <TouchableOpacity
+            style={[styles.authPrimaryBtn, { marginTop: 18 }]}
+            disabled={authLoading}
+            onPress={handleSaveMandatoryDetails}
+          >
+            <Text style={styles.authPrimaryBtnText}>
+              {authLoading ? 'Activating Profile...' : '✅ Save & Activate My Profile ➔'}
+            </Text>
+          </TouchableOpacity>
+        </ScrollView>
       </View>
     </View>
   </Modal>
@@ -5753,6 +6124,63 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '800',
     color: '#0f172a',
+  },
+  // INACTIVE PATIENT PROFILE WARNING
+  activationWarningBox: {
+    backgroundColor: '#fffbeb',
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1.5,
+    borderColor: '#f59e0b',
+    marginBottom: 16,
+    shadowColor: '#f59e0b',
+    shadowOpacity: 0.1,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  activationWarningTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#92400e',
+  },
+  activationWarningSub: {
+    fontSize: 11,
+    color: '#b45309',
+    marginTop: 2,
+    lineHeight: 16,
+  },
+  activationWarningBtn: {
+    backgroundColor: '#d97706',
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    alignItems: 'center',
+    marginTop: 12,
+  },
+  activationWarningBtnText: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  // DOCTOR & SPECIALTY SEARCH
+  doctorSearchBox: {
+    marginBottom: 12,
+  },
+  doctorSearchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ffffff',
+    borderWidth: 1.5,
+    borderColor: '#cbd5e1',
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  doctorSearchInput: {
+    flex: 1,
+    fontSize: 13,
+    color: '#0f172a',
+    padding: 0,
   },
 });
 
