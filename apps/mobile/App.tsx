@@ -227,6 +227,38 @@ export default function App() {
   const [completedAppointments, setCompletedAppointments] = useState<Appointment[]>([]);
   const [lastCompletedAppointment, setLastCompletedAppointment] = useState<Appointment | null>(null);
 
+  // Quick 1-Tap Personas State (All Clinicians & Patients)
+  const [availableUsers, setAvailableUsers] = useState<any[]>([
+    {
+      id: 'usr_pt_jenkins',
+      fullName: 'Dr. Sarah Jenkins, PT, DPT',
+      role: 'Therapist',
+      phoneNumber: '+91 98765 00001',
+      medicalConditions: null
+    },
+    {
+      id: 'usr_patient_281753',
+      fullName: 'Rajesh Sharma',
+      role: 'Patient',
+      phoneNumber: '+91 91234 56789',
+      medicalConditions: 'Lumbar Spine'
+    },
+    {
+      id: 'usr_patient_313867',
+      fullName: 'Anil Verma',
+      role: 'Patient',
+      phoneNumber: '+91 99887 76655',
+      medicalConditions: 'Cervical Spondylosis'
+    },
+    {
+      id: 'usr_patient_329337',
+      fullName: 'Priya Patel',
+      role: 'Patient',
+      phoneNumber: '+91 98888 77777',
+      medicalConditions: 'Cardiopulmonary Care'
+    }
+  ]);
+
   // Therapist Cockpit State
   const [ptStatus, setPtStatus] = useState<'ASSIGNED' | 'EN_ROUTE' | 'ARRIVED' | 'IN_SESSION' | 'COMPLETED'>('ASSIGNED');
   const [clinicalNotes, setClinicalNotes] = useState('');
@@ -362,6 +394,26 @@ export default function App() {
 
   useEffect(() => {
     refreshActiveData();
+
+    // Dynamically load all registered clinicians and patients from backend
+    const loadBackendUsers = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/users`);
+        const data = await res.json();
+        if (Array.isArray(data) && data.length > 0) {
+          const validUsers = data.filter((u: any) => 
+            (u.role?.toLowerCase() === 'patient' || u.role?.toLowerCase() === 'therapist') &&
+            u.phoneNumber
+          );
+          if (validUsers.length > 0) {
+            setAvailableUsers(validUsers);
+          }
+        }
+      } catch {
+        // Fallback to static initial list
+      }
+    };
+    loadBackendUsers();
 
     // SignalR Real-Time Telemetry to .NET Core Backend
     const connection = new signalR.HubConnectionBuilder()
@@ -1104,74 +1156,102 @@ export default function App() {
                     Enter your mobile number. A single mobile app automatically detects whether you are a Patient or Clinician.
                   </Text>
 
-                  {/* QUICK 1-TAP PERSONAS (DEMO & TESTING) */}
-                  <Text style={styles.authQuickLabel}>Quick 1-Tap Personas (Test Ready):</Text>
+                  {/* QUICK 1-TAP USER SIGN-IN (ALL CLINICIANS & ALL PATIENTS) */}
+                  <Text style={styles.authQuickLabel}>Quick 1-Tap Sign-In (Select User):</Text>
                   
-                  {/* PERSONA 1: PATIENT RAJESH SHARMA */}
-                  <TouchableOpacity 
-                    style={styles.authPersonaChip}
-                    onPress={() => {
-                      setAuthPhone('+91 91234 56789');
-                      handleRequestOtp('+91 91234 56789');
-                    }}
-                  >
-                    <View style={styles.authPersonaAvatar}>
-                      <Text style={styles.authPersonaAvatarText}>RS</Text>
-                    </View>
-                    <View style={{ flex: 1, marginLeft: 10 }}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                        <Text style={styles.authPersonaName}>Rajesh Sharma</Text>
-                        <View style={styles.authPatientTag}>
-                          <Text style={styles.authPatientTagText}>Patient</Text>
-                        </View>
-                      </View>
-                      <Text style={styles.authPersonaPhone}>+91 91234 56789 • Pre-registered by DeskBoy</Text>
-                    </View>
-                    <Text style={styles.authPersonaArrow}>➔</Text>
-                  </TouchableOpacity>
+                  {/* 1. CLINICIANS / THERAPISTS SECTION */}
+                  <View style={{ marginTop: 6, marginBottom: 12 }}>
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: '#0369a1', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>
+                      🩺 Certified Clinicians ({availableUsers.filter(u => u.role?.toLowerCase() === 'therapist').length})
+                    </Text>
+                    {availableUsers
+                      .filter(u => u.role?.toLowerCase() === 'therapist')
+                      .map((u: any) => (
+                        <TouchableOpacity 
+                          key={u.id || u.phoneNumber}
+                          style={[styles.authPersonaChip, { marginBottom: 6, borderColor: '#38bdf8', backgroundColor: '#f0f9ff' }]}
+                          onPress={() => {
+                            setAuthPhone(u.phoneNumber);
+                            handleRequestOtp(u.phoneNumber);
+                          }}
+                        >
+                          <View style={[styles.authPersonaAvatar, { backgroundColor: '#e0f2fe' }]}>
+                            <Text style={[styles.authPersonaAvatarText, { color: '#0284c7' }]}>
+                              {u.fullName.split(' ').map((n: string) => n[0]).filter(Boolean).slice(0, 2).join('') || 'PT'}
+                            </Text>
+                          </View>
+                          <View style={{ flex: 1, marginLeft: 10 }}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                              <Text style={styles.authPersonaName}>{u.fullName}</Text>
+                              <View style={[styles.authPatientTag, { backgroundColor: '#e0f2fe', borderColor: '#bae6fd' }]}>
+                                <Text style={[styles.authPatientTagText, { color: '#0284c7' }]}>Clinician</Text>
+                              </View>
+                            </View>
+                            <Text style={[styles.authPersonaPhone, { color: '#0284c7' }]}>
+                              {u.phoneNumber} • Clinician Cockpit & Visits
+                            </Text>
+                          </View>
+                          <Text style={[styles.authPersonaArrow, { color: '#0284c7' }]}>➔</Text>
+                        </TouchableOpacity>
+                    ))}
+                  </View>
 
-                  {/* PERSONA 2: CLINICIAN DR. SARAH JENKINS */}
-                  <TouchableOpacity 
-                    style={[styles.authPersonaChip, { marginTop: 8, borderColor: '#38bdf8', backgroundColor: '#f0f9ff' }]}
-                    onPress={() => {
-                      setAuthPhone('+91 98765 00001');
-                      handleRequestOtp('+91 98765 00001');
-                    }}
-                  >
-                    <View style={[styles.authPersonaAvatar, { backgroundColor: '#e0f2fe' }]}>
-                      <Text style={[styles.authPersonaAvatarText, { color: '#0284c7' }]}>SJ</Text>
-                    </View>
-                    <View style={{ flex: 1, marginLeft: 10 }}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                        <Text style={styles.authPersonaName}>Dr. Sarah Jenkins, PT</Text>
-                        <View style={[styles.authPatientTag, { backgroundColor: '#e0f2fe', borderColor: '#bae6fd' }]}>
-                          <Text style={[styles.authPatientTagText, { color: '#0284c7' }]}>Clinician</Text>
-                        </View>
-                      </View>
-                      <Text style={[styles.authPersonaPhone, { color: '#0284c7' }]}>+91 98765 00001 • Dispatched Visits & Cockpit</Text>
-                    </View>
-                    <Text style={[styles.authPersonaArrow, { color: '#0284c7' }]}>➔</Text>
-                  </TouchableOpacity>
+                  {/* 2. REGISTERED PATIENTS SECTION */}
+                  <View style={{ marginBottom: 14 }}>
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: '#0f766e', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>
+                      👤 Registered Patients ({availableUsers.filter(u => u.role?.toLowerCase() === 'patient').length})
+                    </Text>
+                    {availableUsers
+                      .filter(u => u.role?.toLowerCase() === 'patient')
+                      .map((u: any) => (
+                        <TouchableOpacity 
+                          key={u.id || u.phoneNumber}
+                          style={[styles.authPersonaChip, { marginBottom: 6 }]}
+                          onPress={() => {
+                            setAuthPhone(u.phoneNumber);
+                            handleRequestOtp(u.phoneNumber);
+                          }}
+                        >
+                          <View style={styles.authPersonaAvatar}>
+                            <Text style={styles.authPersonaAvatarText}>
+                              {u.fullName.split(' ').map((n: string) => n[0]).filter(Boolean).slice(0, 2).join('') || 'PA'}
+                            </Text>
+                          </View>
+                          <View style={{ flex: 1, marginLeft: 10 }}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                              <Text style={styles.authPersonaName}>{u.fullName}</Text>
+                              <View style={styles.authPatientTag}>
+                                <Text style={styles.authPatientTagText}>Patient</Text>
+                              </View>
+                            </View>
+                            <Text style={styles.authPersonaPhone}>
+                              {u.phoneNumber} {u.medicalConditions ? `• ${u.medicalConditions.split(',')[0]}` : '• Patient Care Portal'}
+                            </Text>
+                          </View>
+                          <Text style={styles.authPersonaArrow}>➔</Text>
+                        </TouchableOpacity>
+                    ))}
 
-                  {/* PERSONA 3: BRAND NEW PATIENT */}
-                  <TouchableOpacity 
-                    style={[styles.authPersonaChip, { marginTop: 8, borderColor: '#c7d2fe', backgroundColor: '#f5f3ff' }]}
-                    onPress={() => {
-                      setAuthPhone('+91 97777 66666');
-                      handleRequestOtp('+91 97777 66666');
-                    }}
-                  >
-                    <View style={[styles.authPersonaAvatar, { backgroundColor: '#ede9fe' }]}>
-                      <Text style={[styles.authPersonaAvatarText, { color: '#6366f1' }]}>✨</Text>
-                    </View>
-                    <View style={{ flex: 1, marginLeft: 10 }}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                        <Text style={styles.authPersonaName}>New Patient (Self-Registration)</Text>
+                    {/* NEW PATIENT SELF-REGISTRATION OPTION */}
+                    <TouchableOpacity 
+                      style={[styles.authPersonaChip, { borderColor: '#c7d2fe', backgroundColor: '#f5f3ff' }]}
+                      onPress={() => {
+                        setAuthPhone('+91 97777 66666');
+                        handleRequestOtp('+91 97777 66666');
+                      }}
+                    >
+                      <View style={[styles.authPersonaAvatar, { backgroundColor: '#ede9fe' }]}>
+                        <Text style={[styles.authPersonaAvatarText, { color: '#6366f1' }]}>✨</Text>
                       </View>
-                      <Text style={[styles.authPersonaPhone, { color: '#6366f1' }]}>+91 97777 66666 • Onboarding Flow</Text>
-                    </View>
-                    <Text style={[styles.authPersonaArrow, { color: '#6366f1' }]}>➔</Text>
-                  </TouchableOpacity>
+                      <View style={{ flex: 1, marginLeft: 10 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                          <Text style={styles.authPersonaName}>New Patient (Instant SignUp)</Text>
+                        </View>
+                        <Text style={[styles.authPersonaPhone, { color: '#6366f1' }]}>+91 97777 66666 • New Account</Text>
+                      </View>
+                      <Text style={[styles.authPersonaArrow, { color: '#6366f1' }]}>➔</Text>
+                    </TouchableOpacity>
+                  </View>
 
                   {/* PHONE NUMBER INPUT */}
                   <Text style={[styles.authFieldLabel, { marginTop: 18 }]}>Or Enter Any Mobile Number:</Text>
