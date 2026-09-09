@@ -47,7 +47,7 @@ public class Appointment
     public PaymentStatus PaymentStatus { get; set; } = PaymentStatus.PENDING;
 
     [MaxLength(1000)]
-    public string ClinicalNotes { get; set; } = string.Empty;
+    public string? ClinicalNotes { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }

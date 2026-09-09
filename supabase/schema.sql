@@ -46,7 +46,7 @@ CREATE TABLE IF NOT EXISTS categories (
 -- 4. USERS (Patients, Clinicians, Dispatchers)
 CREATE TABLE IF NOT EXISTS users (
     id VARCHAR(50) PRIMARY KEY,
-    role user_role NOT NULL DEFAULT 'Patient',
+    role VARCHAR(50) NOT NULL DEFAULT 'Patient',
     full_name VARCHAR(150) NOT NULL,
     email VARCHAR(150),
     phone_number VARCHAR(30),
@@ -87,8 +87,8 @@ CREATE TABLE IF NOT EXISTS service_requests (
     address_line VARCHAR(250) NOT NULL,
     latitude DOUBLE PRECISION NOT NULL DEFAULT 40.7128,
     longitude DOUBLE PRECISION NOT NULL DEFAULT -74.0060,
-    status request_status NOT NULL DEFAULT 'PENDING_TRIAGE',
-    urgency urgency_level NOT NULL DEFAULT 'ROUTINE',
+    status VARCHAR(50) NOT NULL DEFAULT 'PENDING_TRIAGE',
+    urgency VARCHAR(50) NOT NULL DEFAULT 'ROUTINE',
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -98,7 +98,7 @@ CREATE TABLE IF NOT EXISTS appointments (
     request_id VARCHAR(50) NOT NULL REFERENCES service_requests(id) ON DELETE CASCADE,
     patient_id VARCHAR(50) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     therapist_id VARCHAR(50) NOT NULL REFERENCES therapist_profiles(id) ON DELETE RESTRICT,
-    status appointment_status NOT NULL DEFAULT 'ASSIGNED',
+    status VARCHAR(50) NOT NULL DEFAULT 'ASSIGNED',
     scheduled_start TIMESTAMPTZ NOT NULL,
     scheduled_end TIMESTAMPTZ NOT NULL,
     arrival_otp VARCHAR(10) NOT NULL,
@@ -111,8 +111,8 @@ CREATE TABLE IF NOT EXISTS appointments (
     tax NUMERIC(10, 2) NOT NULL DEFAULT 0.00,
     total_fee NUMERIC(10, 2) NOT NULL DEFAULT 95.00,
     
-    payment_mode payment_mode NOT NULL DEFAULT 'CARD',
-    payment_status payment_status NOT NULL DEFAULT 'PENDING',
+    payment_mode VARCHAR(50) NOT NULL DEFAULT 'CARD',
+    payment_status VARCHAR(50) NOT NULL DEFAULT 'PENDING',
     clinical_notes TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

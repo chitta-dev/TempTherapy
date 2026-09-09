@@ -26,7 +26,7 @@ public class ServiceRequest
     public int PainSeverity { get; set; } = 5;
 
     [MaxLength(500)]
-    public string ChiefComplaint { get; set; } = string.Empty;
+    public string? ChiefComplaint { get; set; }
 
     [MaxLength(30)]
     public string PreferredDate { get; set; } = string.Empty;

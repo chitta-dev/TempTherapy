@@ -24,8 +24,27 @@ public class TherapyDbContext : DbContext
             entity.Property(e => e.BasePrice).HasPrecision(18, 2);
         });
 
+        modelBuilder.Entity<TherapistProfile>(entity =>
+        {
+            entity.Property(e => e.SpecializationsJson).HasColumnName("specializations");
+        });
+
+        modelBuilder.Entity<User>(entity =>
+        {
+            entity.Property(e => e.Role).HasConversion<string>();
+        });
+
+        modelBuilder.Entity<ServiceRequest>(entity =>
+        {
+            entity.Property(e => e.Status).HasConversion<string>();
+            entity.Property(e => e.Urgency).HasConversion<string>();
+        });
+
         modelBuilder.Entity<Appointment>(entity =>
         {
+            entity.Property(e => e.Status).HasConversion<string>();
+            entity.Property(e => e.PaymentMode).HasConversion<string>();
+            entity.Property(e => e.PaymentStatus).HasConversion<string>();
             entity.Property(e => e.BaseFee).HasPrecision(18, 2);
             entity.Property(e => e.DistanceTierFee).HasPrecision(18, 2);
             entity.Property(e => e.UrgentFee).HasPrecision(18, 2);

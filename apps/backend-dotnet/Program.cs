@@ -12,17 +12,22 @@ var connString = builder.Configuration.GetConnectionString("SupabaseConnection")
     ?? builder.Configuration.GetConnectionString("DefaultConnection") 
     ?? "Data Source=therapy.db";
 
-if (connString.Contains("Host=", StringComparison.OrdinalIgnoreCase) || 
-    connString.Contains("User Id=", StringComparison.OrdinalIgnoreCase) ||
-    connString.Contains("Username=", StringComparison.OrdinalIgnoreCase))
+var isPostgreSql = (connString.Contains("Host=", StringComparison.OrdinalIgnoreCase) || 
+                    connString.Contains("User Id=", StringComparison.OrdinalIgnoreCase) ||
+                    connString.Contains("Username=", StringComparison.OrdinalIgnoreCase))
+                   && !connString.Contains("[YOUR_DB_PASSWORD]");
+
+if (isPostgreSql)
 {
     builder.Services.AddDbContext<TherapyDbContext>(options =>
-        options.UseNpgsql(connString));
+        options.UseNpgsql(connString)
+               .UseSnakeCaseNamingConvention());
 }
 else
 {
+    var fallbackConn = connString.Contains("[YOUR_DB_PASSWORD]") ? "Data Source=therapy.db" : connString;
     builder.Services.AddDbContext<TherapyDbContext>(options =>
-        options.UseSqlite(connString));
+        options.UseSqlite(fallbackConn));
 }
 
 // 2. Register Business Services
