@@ -122,37 +122,46 @@ public class AuthController : ControllerBase
                    (digitsOnly.Length >= 10 && uDigits.EndsWith(digitsOnly.Substring(digitsOnly.Length - 10)));
         });
 
-        if (matchedUser != null)
+        if (matchedUser == null)
         {
-            return Ok(new
+            // Auto-provision brand new patient so they are never blocked by registration forms
+            var last4 = digitsOnly.Length >= 4 ? digitsOnly.Substring(digitsOnly.Length - 4) : "User";
+            matchedUser = new User
             {
-                success = true,
-                isNewUser = false,
-                isPreCreatedByAdmin = matchedUser.Role == UserRole.Patient,
-                message = $"Welcome, {matchedUser.FullName}!",
-                user = new
-                {
-                    matchedUser.Id,
-                    matchedUser.FullName,
-                    matchedUser.Email,
-                    matchedUser.PhoneNumber,
-                    Role = matchedUser.Role.ToString(),
-                    matchedUser.MedicalConditions,
-                    matchedUser.Allergies,
-                    matchedUser.BloodGroup,
-                    matchedUser.EmergencyContactName,
-                    matchedUser.EmergencyContactPhone,
-                    matchedUser.CreatedAt
-                }
-            });
+                Id = $"usr_patient_{DateTime.UtcNow.Ticks % 1000000}",
+                Role = UserRole.Patient,
+                FullName = $"Patient {last4}",
+                PhoneNumber = cleanPhone,
+                Email = $"patient_{digitsOnly}@therapyhub.health",
+                MedicalConditions = "None",
+                BloodGroup = "O+",
+                PasswordHash = "password@1234",
+                CreatedAt = DateTime.UtcNow
+            };
+            _context.Users.Add(matchedUser);
+            await _context.SaveChangesAsync();
         }
 
         return Ok(new
         {
             success = true,
-            isNewUser = true,
-            message = "Phone verified. Please complete your patient profile.",
-            phoneNumber = cleanPhone
+            isNewUser = false,
+            isPreCreatedByAdmin = matchedUser.Role == UserRole.Patient,
+            message = $"Welcome, {matchedUser.FullName}!",
+            user = new
+            {
+                matchedUser.Id,
+                matchedUser.FullName,
+                matchedUser.Email,
+                matchedUser.PhoneNumber,
+                Role = matchedUser.Role.ToString(),
+                matchedUser.MedicalConditions,
+                matchedUser.Allergies,
+                matchedUser.BloodGroup,
+                matchedUser.EmergencyContactName,
+                matchedUser.EmergencyContactPhone,
+                matchedUser.CreatedAt
+            }
         });
     }
 

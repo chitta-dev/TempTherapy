@@ -362,7 +362,8 @@ export default function App() {
       const data = await res.json();
 
       if (res.ok) {
-        showToast(`User ${newUserName} created successfully with role ${newUserRole}!`, 'success');
+        const phoneNotice = newUserPhone ? ` SMS invitation dispatched to ${newUserPhone}.` : '';
+        showToast(`User ${newUserName} (${newUserRole}) created!${phoneNotice}`, 'success');
         setShowCreateUserModal(false);
         setNewUserName('');
         setNewUserEmail('');

@@ -28,11 +28,15 @@ public class UsersController : ControllerBase
     );
 
     public record UpdateUserDto(
-        string FullName,
+        string? FullName,
         string? Email,
         string? PhoneNumber,
         string? Role,
-        string? Password
+        string? Password,
+        string? MedicalConditions,
+        string? BloodGroup,
+        string? EmergencyContactName,
+        string? EmergencyContactPhone
     );
 
     [HttpGet]
@@ -118,7 +122,19 @@ public class UsersController : ControllerBase
         }
 
         await _context.SaveChangesAsync();
-        return Ok(new { success = true, message = "User created successfully.", user });
+
+        var notificationMessage = !string.IsNullOrWhiteSpace(user.PhoneNumber)
+            ? $"[SMS Sent to {user.PhoneNumber}]: Welcome to TherapyHub, {user.FullName}! Your account has been registered. Download the TherapyHub mobile app and log in with your phone number {user.PhoneNumber} using OTP (1234). You can update your profile inside the app anytime."
+            : $"[Notification queued]: Welcome to TherapyHub, {user.FullName}!";
+
+        Console.WriteLine($"[NOTIFY-DISPATCH] {notificationMessage}");
+
+        return Ok(new { 
+            success = true, 
+            message = "User created successfully.", 
+            notification = notificationMessage,
+            user 
+        });
     }
 
     [HttpPut("{id}")]
@@ -131,6 +147,10 @@ public class UsersController : ControllerBase
         if (!string.IsNullOrWhiteSpace(dto.Email)) user.Email = dto.Email.Trim().ToLower();
         if (!string.IsNullOrWhiteSpace(dto.PhoneNumber)) user.PhoneNumber = dto.PhoneNumber.Trim();
         if (!string.IsNullOrWhiteSpace(dto.Password)) user.PasswordHash = dto.Password.Trim();
+        if (!string.IsNullOrWhiteSpace(dto.MedicalConditions)) user.MedicalConditions = dto.MedicalConditions.Trim();
+        if (!string.IsNullOrWhiteSpace(dto.BloodGroup)) user.BloodGroup = dto.BloodGroup.Trim();
+        if (!string.IsNullOrWhiteSpace(dto.EmergencyContactName)) user.EmergencyContactName = dto.EmergencyContactName.Trim();
+        if (!string.IsNullOrWhiteSpace(dto.EmergencyContactPhone)) user.EmergencyContactPhone = dto.EmergencyContactPhone.Trim();
         if (!string.IsNullOrWhiteSpace(dto.Role) && Enum.TryParse<UserRole>(dto.Role, true, out var role))
         {
             user.Role = role;

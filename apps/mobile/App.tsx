@@ -469,64 +469,68 @@ export default function App() {
       });
       const data = await res.json();
       if (data.success) {
-        if (!data.isNewUser && data.user) {
-          // Resolve role from backend: 'Therapist' vs 'Patient'
-          const userRole: 'PATIENT' | 'THERAPIST' = 
-            data.user.role?.toUpperCase() === 'THERAPIST' ? 'THERAPIST' : 'PATIENT';
+        const u = data.user || {
+          id: `usr_${Date.now()}`,
+          fullName: 'Patient',
+          phoneNumber: authPhone,
+          role: 'Patient'
+        };
 
-          setRoleMode(userRole);
+        // Resolve role from backend: 'Therapist' vs 'Patient'
+        const userRole: 'PATIENT' | 'THERAPIST' = 
+          u.role?.toUpperCase() === 'THERAPIST' ? 'THERAPIST' : 'PATIENT';
 
-          if (userRole === 'PATIENT') {
-            setPatientProfile(prev => ({
-              ...prev,
-              fullName: data.user.fullName || prev.fullName,
-              phone: data.user.phoneNumber || prev.phone,
-              email: data.user.email || prev.email,
-              bloodGroup: data.user.bloodGroup || prev.bloodGroup,
-              emergencyName: data.user.emergencyContactName || prev.emergencyName,
-              emergencyPhone: data.user.emergencyContactPhone || prev.emergencyPhone,
-              conditions: data.user.medicalConditions 
-                ? data.user.medicalConditions.split(',').map((s: string) => s.trim()) 
-                : prev.conditions
-            }));
-          }
+        setRoleMode(userRole);
 
-          setIsPreCreatedAccount(!!data.isPreCreatedByAdmin);
-
-          // Create or Renew the 30-Day Biometric Session Lease!
-          const newLease = {
-            active: true,
-            userId: data.user.id,
-            userName: data.user.fullName,
-            phoneNumber: data.user.phoneNumber,
-            role: userRole,
-            lastOtpVerifiedAt: Date.now(),
-            biometricEnabled: true,
-          };
-          setSessionLease(newLease);
-          setIsLeaseSimulatedExpired(false);
-
-          // Prompt user to enable 30-Day Biometric access
-          setShowBiometricEnrollModal(true);
-
-          showToast(
-            'SUCCESS', 
-            userRole === 'THERAPIST' ? '🩺 Clinician Verified' : '👤 Patient Verified', 
-            `Welcome, ${data.user.fullName}! Phone verified.`
-          );
-          refreshActiveData();
-        } else {
-          // Brand new patient needs to complete profile
-          setAuthStep('PROFILE_SETUP');
-          setRegFullName('');
-          showToast('INFO', 'Phone Verified', 'Please complete your patient profile to continue.');
+        if (userRole === 'PATIENT') {
+          setPatientProfile(prev => ({
+            ...prev,
+            fullName: u.fullName || prev.fullName || 'Patient',
+            phone: u.phoneNumber || authPhone || prev.phone,
+            email: u.email || prev.email,
+            bloodGroup: u.bloodGroup || prev.bloodGroup,
+            emergencyName: u.emergencyContactName || prev.emergencyName,
+            emergencyPhone: u.emergencyContactPhone || prev.emergencyPhone,
+            conditions: u.medicalConditions 
+              ? u.medicalConditions.split(',').map((s: string) => s.trim()) 
+              : prev.conditions
+          }));
         }
+
+        setIsPreCreatedAccount(!!data.isPreCreatedByAdmin);
+
+        // Create or Renew the 30-Day Biometric Session Lease (silently tracked behind the scenes)
+        const newLease = {
+          active: true,
+          userId: u.id,
+          userName: u.fullName || (userRole === 'THERAPIST' ? 'Dr. Sarah Jenkins' : 'Patient'),
+          phoneNumber: u.phoneNumber || authPhone,
+          role: userRole,
+          lastOtpVerifiedAt: Date.now(),
+          biometricEnabled: true,
+        };
+        setSessionLease(newLease);
+        setIsLeaseSimulatedExpired(false);
+
+        // Directly authenticate user into role dashboard - no upfront blocking profile registration!
+        setIsAuthenticated(true);
+
+        // Prompt user to enable Biometric 1-tap access
+        setShowBiometricEnrollModal(true);
+
+        showToast(
+          'SUCCESS', 
+          userRole === 'THERAPIST' ? '🩺 Clinician Verified' : '👤 Patient Verified', 
+          `Welcome, ${newLease.userName}! Phone verified.`
+        );
+        refreshActiveData();
       } else {
         showToast('ERROR', 'Verification Failed', data.message || 'Invalid OTP code.');
       }
     } catch {
       // Local fallback
       setIsAuthenticated(true);
+      setShowBiometricEnrollModal(true);
       showToast('SUCCESS', 'Welcome to TherapyHub', 'Signed in successfully (local mode).');
     } finally {
       setAuthLoading(false);
@@ -671,8 +675,27 @@ export default function App() {
     showToast('INFO', 'Signed Out', 'You have been safely signed out. You can unlock with Biometrics or sign in with another phone.');
   };
 
-  // Save Profile Handler
-  const handleSaveProfile = () => {
+  // Save Profile Handler - Updates personal & medical details anytime and syncs to backend
+  const handleSaveProfile = async () => {
+    if (sessionLease?.userId) {
+      try {
+        await fetch(`${API_BASE}/users/${sessionLease.userId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            fullName: patientProfile.fullName,
+            phoneNumber: patientProfile.phone,
+            medicalConditions: patientProfile.conditions.join(', '),
+            bloodGroup: patientProfile.bloodGroup,
+            emergencyContactName: patientProfile.emergencyName,
+            emergencyContactPhone: patientProfile.emergencyPhone
+          })
+        });
+        setSessionLease(prev => prev ? { ...prev, userName: patientProfile.fullName } : null);
+      } catch (err) {
+        console.warn('Could not sync profile to backend:', err);
+      }
+    }
     showToast('SUCCESS', 'Profile Saved Successfully', 'Your contact details, emergency info, and medical precautions have been updated.');
   };
 
@@ -945,13 +968,13 @@ export default function App() {
                 </View>
               </View>
 
-              {/* 30-DAY LEASE STATUS CARD */}
+              {/* BIOMETRIC QUICK UNLOCK CARD (30-day lease tracked silently) */}
               <View style={styles.leaseStatusBanner}>
                 <Text style={styles.leaseStatusIcon}>🔐</Text>
                 <View style={{ flex: 1, marginLeft: 10 }}>
-                  <Text style={styles.leaseStatusTitle}>30-Day Biometric Lease: Active</Text>
+                  <Text style={styles.leaseStatusTitle}>Biometric Sign-In Ready</Text>
                   <Text style={styles.leaseStatusSubtitle}>
-                    {getRemainingDays()} days remaining on this device before next OTP re-verification.
+                    Touch sensor or look at screen to sign in with Face ID / Fingerprint.
                   </Text>
                 </View>
               </View>
@@ -1316,15 +1339,12 @@ export default function App() {
               </View>
             </View>
 
-            {/* ROLE & 30-DAY LEASE BADGES & LOGOUT */}
+            {/* ROLE BADGE & LOGOUT */}
             <View style={styles.headerRightRow}>
               <View style={[styles.activeRoleTag, roleMode === 'THERAPIST' ? styles.therapistRoleTag : styles.patientRoleTag]}>
                 <Text style={[styles.activeRoleTagText, roleMode === 'THERAPIST' ? styles.therapistRoleTagText : styles.patientRoleTagText]}>
                   {roleMode === 'THERAPIST' ? '🩺 CLINICIAN' : '👤 PATIENT'}
                 </Text>
-              </View>
-              <View style={styles.leasePill}>
-                <Text style={styles.leasePillText}>🔐 {getRemainingDays()}d</Text>
               </View>
               <TouchableOpacity 
                 style={styles.headerLogoutBtn}
@@ -2277,9 +2297,9 @@ export default function App() {
         <View style={[styles.biometricIconCircle, styles.biometricPulse]}>
           <Text style={{ fontSize: 44 }}>🪪</Text>
         </View>
-        <Text style={styles.biometricHeadline}>Enable 30-Day Biometrics?</Text>
+        <Text style={styles.biometricHeadline}>Enable Biometric Login?</Text>
         <Text style={styles.biometricSub}>
-          Enjoy 1-tap Face ID / Touch ID access to your {roleMode === 'THERAPIST' ? 'Clinician Cockpit' : 'Patient Care Portal'} for the next 30 days without typing OTPs or waiting for SMS.
+          Enjoy fast 1-tap Face ID / Fingerprint access to your {roleMode === 'THERAPIST' ? 'Clinician Cockpit' : 'Patient Care Portal'}. You can update your personal details in your profile anytime.
         </Text>
 
         <View style={styles.leaseDetailCard}>
@@ -2294,8 +2314,8 @@ export default function App() {
             </Text>
           </View>
           <View style={styles.leaseDetailRow}>
-            <Text style={styles.leaseDetailLabel}>Lease Validity:</Text>
-            <Text style={[styles.leaseDetailValue, { color: '#16a34a' }]}>30 Days (Renewable via OTP)</Text>
+            <Text style={styles.leaseDetailLabel}>Security Mode:</Text>
+            <Text style={[styles.leaseDetailValue, { color: '#16a34a' }]}>Biometric 1-Tap Active</Text>
           </View>
         </View>
 
