@@ -1,5 +1,5 @@
 -- ==============================================================================
--- TherapyCare On-Demand Physiotherapy Platform: Supabase PostgreSQL Schema
+-- TherapyHub On-Demand Physiotherapy Platform: Supabase PostgreSQL Schema
 -- Project Reference: mapkzyqbedennmzasass
 -- ==============================================================================
 
@@ -241,5 +241,5 @@ ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO users (id, role, full_name, email, password_hash, phone_number)
 VALUES
-    ('usr_admin', 'Admin', 'System Administrator', 'admin@therapycare.health', 'password@1234', '+91 98765 43210')
+    ('usr_admin', 'Admin', 'System Administrator', 'admin@therapyhub.health', 'password@1234', '+91 98765 43210')
 ON CONFLICT (id) DO NOTHING;

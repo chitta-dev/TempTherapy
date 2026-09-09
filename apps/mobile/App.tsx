@@ -576,7 +576,7 @@ export default function App() {
           </View>
           <View>
             <View style={styles.appNameRow}>
-              <Text style={styles.brandTitle}>TherapyCare</Text>
+              <Text style={styles.brandTitle}>TherapyHub</Text>
               <View style={styles.inHomePill}>
                 <Text style={styles.inHomePillText}>IN-HOME CARE</Text>
               </View>

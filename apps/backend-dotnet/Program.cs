@@ -66,7 +66,7 @@ builder.Services.AddSwaggerGen(c =>
 {
     c.SwaggerDoc("v1", new OpenApiInfo
     {
-        Title = "TherapyCare On-Demand Clinical Platform API",
+        Title = "TherapyHub On-Demand Clinical Platform API",
         Version = "v1",
         Description = "Enterprise .NET Core Backend providing on-demand physiotherapy triage, dispatch orchestration, itemized fee calculation, and real-time SignalR telemetry."
     });
@@ -87,7 +87,7 @@ app.UseCors("AllowAll");
 app.UseSwagger();
 app.UseSwaggerUI(c =>
 {
-    c.SwaggerEndpoint("/swagger/v1/swagger.json", "TherapyCare API v1");
+    c.SwaggerEndpoint("/swagger/v1/swagger.json", "TherapyHub API v1");
     c.RoutePrefix = "swagger";
 });
 
@@ -97,7 +97,7 @@ app.MapGet("/", () => Results.Content(@"
     <html lang=""en"">
       <head>
         <meta charset=""UTF-8"">
-        <title>TherapyCare .NET Core API & Real-Time SignalR Server</title>
+        <title>TherapyHub .NET Core API & Real-Time SignalR Server</title>
         <style>
           body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #042f2e; color: #f0fdfa; padding: 40px; margin: 0; }
           .card { background: #134e4a; border-radius: 16px; padding: 32px; max-width: 680px; margin: 0 auto; border: 1px solid #14b8a6; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5); }
@@ -114,7 +114,7 @@ app.MapGet("/", () => Results.Content(@"
       </head>
       <body>
         <div class=""card"">
-          <h1>🩺 TherapyCare .NET 8 Core Backend</h1>
+          <h1>🩺 TherapyHub .NET 8 Core Backend</h1>
           <div class=""status-bar"">
             <span class=""badge"">ASP.NET CORE 8.0</span>
             <span class=""signalr-badge"">⚡ SIGNALR REAL-TIME ACTIVE</span>

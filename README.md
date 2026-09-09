@@ -1,4 +1,4 @@
-# TherapyCare - In-Home Physiotherapy Booking Platform
+# TherapyHub - In-Home Physiotherapy Booking Platform
 > Complete cross-platform system featuring **Patient Mobile App (iOS & Android)**, **Therapist Mobile App (iOS & Android)**, and **Admin & Desk Boy Web Dispatch Portal**.
 
 ---

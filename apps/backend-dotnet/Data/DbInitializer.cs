@@ -10,6 +10,12 @@ public static class DbInitializer
 
         if (context.Categories.Any())
         {
+            var admin = context.Users.Find("usr_admin");
+            if (admin != null && admin.Email != "admin@therapyhub.health")
+            {
+                admin.Email = "admin@therapyhub.health";
+                context.SaveChanges();
+            }
             return; // DB has already been seeded
         }
 

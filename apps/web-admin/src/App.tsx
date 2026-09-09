@@ -64,14 +64,14 @@ export default function App() {
   // Authentication & Session
   const [currentUser, setCurrentUser] = useState<UserItem | null>(() => {
     try {
-      const saved = localStorage.getItem('therapycare_admin_user');
+      const saved = localStorage.getItem('therapyhub_admin_user');
       return saved ? JSON.parse(saved) : null;
     } catch {
       return null;
     }
   });
 
-  const [loginEmail, setLoginEmail] = useState('admin@therapycare.health');
+  const [loginEmail, setLoginEmail] = useState('admin@therapyhub.health');
   const [loginPassword, setLoginPassword] = useState('password@1234');
   const [loginError, setLoginError] = useState('');
   const [loginLoading, setLoginLoading] = useState(false);
@@ -154,24 +154,24 @@ export default function App() {
 
       if (res.ok && data.user) {
         setCurrentUser(data.user);
-        localStorage.setItem('therapycare_admin_user', JSON.stringify(data.user));
+        localStorage.setItem('therapyhub_admin_user', JSON.stringify(data.user));
         showToast(`Welcome back, ${data.user.fullName}!`, 'success');
       } else {
         setLoginError(data.message || 'Invalid credentials.');
       }
     } catch (err: any) {
       // Fallback local login for instant testing
-      if (loginEmail === 'admin@therapycare.health' && loginPassword === 'password@1234') {
+      if ((loginEmail === 'admin@therapyhub.health' || loginEmail === 'admin@therapycare.health') && loginPassword === 'password@1234') {
         const rootAdmin: UserItem = {
           id: 'usr_admin',
           fullName: 'Dr. Arthur Mitchell (Root Admin)',
-          email: 'admin@therapycare.health',
+          email: 'admin@therapyhub.health',
           phoneNumber: '+91 98765 43210',
           role: 'Admin',
           createdAt: new Date().toISOString()
         };
         setCurrentUser(rootAdmin);
-        localStorage.setItem('therapycare_admin_user', JSON.stringify(rootAdmin));
+        localStorage.setItem('therapyhub_admin_user', JSON.stringify(rootAdmin));
         showToast('Logged in as Root Admin (offline fallback mode).', 'info');
       } else {
         setLoginError('Could not reach backend API. Make sure backend is running.');
@@ -183,7 +183,7 @@ export default function App() {
 
   const handleLogout = () => {
     setCurrentUser(null);
-    localStorage.removeItem('therapycare_admin_user');
+    localStorage.removeItem('therapyhub_admin_user');
     showToast('You have been logged out.', 'info');
   };
 
@@ -567,7 +567,7 @@ export default function App() {
             <div className="w-14 h-14 bg-teal-600 rounded-2xl flex items-center justify-center mx-auto shadow-lg shadow-teal-500/20 text-white">
               <Stethoscope className="w-8 h-8" />
             </div>
-            <h1 className="text-2xl font-black tracking-tight text-white">TherapyCare Hub</h1>
+            <h1 className="text-2xl font-black tracking-tight text-white">TherapyHub</h1>
             <p className="text-xs text-slate-400">Clinical Administration & Front-Desk Operations</p>
           </div>
 
@@ -587,7 +587,7 @@ export default function App() {
                   type="email"
                   value={loginEmail}
                   onChange={e => setLoginEmail(e.target.value)}
-                  placeholder="admin@therapycare.health"
+                  placeholder="admin@therapyhub.health"
                   required
                   className="w-full pl-10 pr-4 py-2.5 bg-slate-900/80 border border-slate-700 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-teal-500"
                 />
@@ -627,7 +627,7 @@ export default function App() {
               <button
                 type="button"
                 onClick={() => {
-                  setLoginEmail('admin@therapycare.health');
+                  setLoginEmail('admin@therapyhub.health');
                   setLoginPassword('password@1234');
                 }}
                 className="bg-slate-700/50 hover:bg-slate-700 border border-slate-600/60 p-2.5 rounded-xl text-left transition text-xs"
@@ -635,13 +635,13 @@ export default function App() {
                 <div className="font-bold text-teal-400 flex items-center space-x-1">
                   <span>👑 Admin User</span>
                 </div>
-                <div className="text-[10px] text-slate-400 truncate">admin@therapycare.health</div>
+                <div className="text-[10px] text-slate-400 truncate">admin@therapyhub.health</div>
               </button>
 
               <button
                 type="button"
                 onClick={() => {
-                  setLoginEmail('desk.alex@therapycare.health');
+                  setLoginEmail('desk.alex@therapyhub.health');
                   setLoginPassword('password@1234');
                 }}
                 className="bg-slate-700/50 hover:bg-slate-700 border border-slate-600/60 p-2.5 rounded-xl text-left transition text-xs"
@@ -649,7 +649,7 @@ export default function App() {
                 <div className="font-bold text-sky-400 flex items-center space-x-1">
                   <span>🚴 DeskBoy User</span>
                 </div>
-                <div className="text-[10px] text-slate-400 truncate">desk.alex@therapycare...</div>
+                <div className="text-[10px] text-slate-400 truncate">desk.alex@therapyhub...</div>
               </button>
             </div>
             <p className="text-[10px] text-slate-400 text-center">
@@ -685,7 +685,7 @@ export default function App() {
           </div>
           <div>
             <div className="flex items-center space-x-2">
-              <h1 className="text-lg font-black tracking-tight text-slate-900">TherapyCare</h1>
+              <h1 className="text-lg font-black tracking-tight text-slate-900">TherapyHub</h1>
               <span className="bg-teal-50 border border-teal-200/80 text-teal-800 text-[10px] font-bold px-2 py-0.5 rounded-full">
                 {isAdmin ? 'ADMIN CONTROL' : 'CARE DESK'}
               </span>
@@ -1310,7 +1310,7 @@ export default function App() {
             <div className="bg-white rounded-[32px] overflow-hidden min-h-[600px] flex flex-col font-sans">
               <div className="bg-teal-700 p-4 text-white flex items-center justify-between">
                 <div>
-                  <h3 className="font-bold text-sm">TherapyCare Mobile</h3>
+                  <h3 className="font-bold text-sm">TherapyHub Mobile</h3>
                   <p className="text-[10px] text-teal-200">Patient & Clinician Mobile Portal</p>
                 </div>
                 <span className="bg-teal-800/80 px-2 py-0.5 rounded text-[10px] font-mono">Expo Go</span>
@@ -1443,7 +1443,7 @@ export default function App() {
                   type="email"
                   value={newUserEmail}
                   onChange={e => setNewUserEmail(e.target.value)}
-                  placeholder="alex.desk@therapycare.health"
+                  placeholder="alex.desk@therapyhub.health"
                   required
                   className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs"
                 />

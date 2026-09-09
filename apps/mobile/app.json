@@ -1,16 +1,16 @@
 {
   "expo": {
-    "name": "TherapyCare",
-    "slug": "therapy-care",
+    "name": "TherapyHub",
+    "slug": "therapy-hub",
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.therapycare.app"
+      "bundleIdentifier": "com.therapyhub.app"
     },
     "android": {
-      "package": "com.therapycare.app"
+      "package": "com.therapyhub.app"
     }
   }
 }
