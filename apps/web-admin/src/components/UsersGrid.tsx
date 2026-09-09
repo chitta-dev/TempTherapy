@@ -145,7 +145,7 @@ export const UsersGrid: React.FC<UsersGridProps> = ({
             </span>
           </h2>
           <p className="text-xs text-slate-500 mt-0.5">
-            Admin console with sorting, filtering, and paging to manage staff, deskboys, clinicians, and registered patients.
+            Admin console with sorting, filtering, and paging to manage staff, deskboys, therapists, and registered patients.
           </p>
         </div>
         {isAdmin && (

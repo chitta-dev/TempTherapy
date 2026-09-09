@@ -295,7 +295,7 @@ export const PaymentsGrid: React.FC<PaymentsGridProps> = ({
             <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
             <input
               type="text"
-              placeholder="Search by invoice #, patient, clinician, mode..."
+              placeholder="Search by invoice #, patient, therapist, mode..."
               value={searchQuery}
               onChange={(e) => {
                 setSearchQuery(e.target.value);
@@ -374,7 +374,7 @@ export const PaymentsGrid: React.FC<PaymentsGridProps> = ({
                   onSort={handleSort}
                 />
                 <TableSortHeader
-                  label="Attending Clinician"
+                  label="Attending Therapist"
                   field="therapistName"
                   currentSortField={sortField}
                   currentSortDirection={sortDirection}
