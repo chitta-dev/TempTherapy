@@ -8,11 +8,11 @@
   ],
   "scripts": {
     "start": "concurrently -n \"BACKEND,WEB\" -c \"blue.bold,green.bold\" \"npm run start:backend\" \"npm run start:web\"",
-    "start:backend": "npm --prefix apps/backend run dev",
+    "start:backend": "dotnet run --project apps/backend-dotnet --urls \"http://0.0.0.0:4000\"",
     "start:web": "npm --prefix apps/web-admin run dev",
     "start:mobile": "npm --prefix apps/mobile start",
     "dev:all": "concurrently -n \"BACKEND,WEB,MOBILE\" -c \"blue.bold,green.bold,magenta.bold\" \"npm run start:backend\" \"npm run start:web\" \"npm run start:mobile\"",
-    "build:all": "npm --prefix packages/shared run build && npm --prefix apps/backend run build && npm --prefix apps/web-admin run build",
+    "build:all": "npm --prefix packages/shared run build && dotnet build apps/backend-dotnet && npm --prefix apps/web-admin run build",
     "postinstall": "node scripts/patch-expo-asset.js"
   },
   "devDependencies": {
