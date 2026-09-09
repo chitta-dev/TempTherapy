@@ -147,20 +147,45 @@ export default function App() {
     phone: ''
   });
 
+  // =========================================================================
+  // UNIFIED AUTHENTICATION GATEWAY STATE
+  // =========================================================================
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+  const [authMethod, setAuthMethod] = useState<'PHONE_OTP' | 'BIOMETRIC' | 'SSO'>('PHONE_OTP');
+  const [authStep, setAuthStep] = useState<'PHONE_INPUT' | 'OTP_INPUT' | 'PROFILE_SETUP'>('PHONE_INPUT');
+  const [authPhone, setAuthPhone] = useState<string>('+91 91234 56789');
+  const [authOtp, setAuthOtp] = useState<string>('');
+  const [authLoading, setAuthLoading] = useState<boolean>(false);
+  const [isPreCreatedAccount, setIsPreCreatedAccount] = useState<boolean>(false);
+
+  // New Patient Registration State (Adaptive Onboarding)
+  const [regFullName, setRegFullName] = useState<string>('');
+  const [regEmail, setRegEmail] = useState<string>('');
+  const [regAddress, setRegAddress] = useState<string>('Flat 302, Green Glen Layout, Bellandur, Bengaluru');
+  const [regDoorNotes, setRegDoorNotes] = useState<string>('Buzzer #302. Lift on 3rd floor.');
+  const [regEmergencyName, setRegEmergencyName] = useState<string>('Pooja Sharma');
+  const [regEmergencyPhone, setRegEmergencyPhone] = useState<string>('+91 98765 43210');
+  const [regBloodGroup, setRegBloodGroup] = useState<string>('O+');
+  const [regConditions, setRegConditions] = useState<string[]>(['None / Healthy']);
+
+  // Biometric Unlock Simulation Modal
+  const [biometricModal, setBiometricModal] = useState<boolean>(false);
+  const [biometricScanning, setBiometricScanning] = useState<boolean>(false);
+
   // Patient Personal Info State
   const [patientProfile, setPatientProfile] = useState({
-    fullName: 'Johnathan Doe',
-    phone: '+1 (555) 349-2810',
-    email: 'johnathan.doe@gmail.com',
-    age: '38',
+    fullName: 'Rajesh Sharma',
+    phone: '+91 91234 56789',
+    email: 'rajesh.sharma@example.in',
+    age: '42',
     gender: 'Male',
-    bloodGroup: 'O+',
+    bloodGroup: 'B+',
     conditions: ['Hypertension', 'Spinal Surgery History'] as string[],
-    emergencyName: 'Eleanor Doe',
+    emergencyName: 'Pooja Sharma',
     emergencyRelation: 'Spouse',
-    emergencyPhone: '+1 (555) 839-2019',
-    primaryAddress: '742 Evergreen Terrace, Apt 4B, New York',
-    entryNotes: 'Door buzzer #402. Elevator on left.'
+    emergencyPhone: '+91 98765 43210',
+    primaryAddress: 'Flat 402, Palm Heights, Indiranagar, Bengaluru',
+    entryNotes: 'Door buzzer #402. Tower B elevator on left.'
   });
 
   // Booking Form Interactive State
@@ -334,6 +359,244 @@ export default function App() {
     if (val <= 6) return { text: 'Moderate Pain • Restricts bending, sitting & movement', color: '#d97706' };
     if (val <= 8) return { text: 'Severe Pain • Significant limitation, prompt care advised', color: '#ea580c' };
     return { text: 'Acute / Extreme Pain • Urgent clinician visit recommended', color: '#dc2626' };
+  };
+
+  // Toggle condition in new registration form
+  const toggleRegCondition = (cond: string) => {
+    if (cond === 'None / Healthy') {
+      setRegConditions(['None / Healthy']);
+      return;
+    }
+    const current = regConditions.filter(c => c !== 'None / Healthy');
+    if (current.includes(cond)) {
+      setRegConditions(current.filter(c => c !== cond));
+    } else {
+      setRegConditions([...current, cond]);
+    }
+  };
+
+  // =========================================================================
+  // UNIFIED AUTHENTICATION GATEWAY HANDLERS
+  // =========================================================================
+
+  // 1. Request OTP (Sends 4-digit code, fixed 1234 in test mode)
+  const handleRequestOtp = async (phoneToUse?: string) => {
+    const targetPhone = (phoneToUse || authPhone).trim();
+    if (!targetPhone) {
+      showToast('WARNING', 'Missing Phone Number', 'Please enter your mobile phone number.');
+      return;
+    }
+    setAuthLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/auth/request-otp`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phoneNumber: targetPhone })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setAuthPhone(targetPhone);
+        setAuthStep('OTP_INPUT');
+        setAuthOtp('1234'); // Pre-fill test OTP for instantaneous testing
+        showToast('SUCCESS', '🔑 OTP Sent', `Code 1234 sent to ${targetPhone}.`);
+      } else {
+        showToast('ERROR', 'Error', data.message || 'Could not send OTP');
+      }
+    } catch {
+      // Offline / local preview fallback
+      setAuthPhone(targetPhone);
+      setAuthStep('OTP_INPUT');
+      setAuthOtp('1234');
+      showToast('SUCCESS', 'OTP Sent', `Code 1234 sent to ${targetPhone} (local mode).`);
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  // 2. Verify OTP (Works for both Admin-Created & Returning & Brand New Patients)
+  const handleVerifyOtp = async (otpToUse?: string) => {
+    const targetOtp = (otpToUse || authOtp).trim();
+    if (!targetOtp) {
+      showToast('WARNING', 'Enter OTP', 'Please enter the 4-digit verification code.');
+      return;
+    }
+    setAuthLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/auth/verify-otp`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phoneNumber: authPhone, otp: targetOtp })
+      });
+      const data = await res.json();
+      if (data.success) {
+        if (!data.isNewUser && data.user) {
+          // Patient exists (Admin pre-created OR returning)
+          setPatientProfile(prev => ({
+            ...prev,
+            fullName: data.user.fullName || prev.fullName,
+            phone: data.user.phoneNumber || prev.phone,
+            email: data.user.email || prev.email,
+            bloodGroup: data.user.bloodGroup || prev.bloodGroup,
+            emergencyName: data.user.emergencyContactName || prev.emergencyName,
+            emergencyPhone: data.user.emergencyContactPhone || prev.emergencyPhone,
+            conditions: data.user.medicalConditions 
+              ? data.user.medicalConditions.split(',').map((s: string) => s.trim()) 
+              : prev.conditions
+          }));
+          setIsPreCreatedAccount(!!data.isPreCreatedByAdmin);
+          setIsAuthenticated(true);
+          setRoleMode('PATIENT');
+          showToast(
+            'SUCCESS', 
+            data.isPreCreatedByAdmin ? '🏥 Care Desk Account Ready' : 'Welcome Back!', 
+            `Logged in as ${data.user.fullName}. ${data.isPreCreatedByAdmin ? 'Pre-registered visits loaded.' : ''}`
+          );
+          refreshActiveData();
+        } else {
+          // Brand new user needs to complete profile
+          setAuthStep('PROFILE_SETUP');
+          setRegFullName('');
+          showToast('INFO', 'Phone Verified', 'Please complete your patient profile to continue.');
+        }
+      } else {
+        showToast('ERROR', 'Verification Failed', data.message || 'Invalid OTP code.');
+      }
+    } catch {
+      // Local fallback
+      setIsAuthenticated(true);
+      setRoleMode('PATIENT');
+      showToast('SUCCESS', 'Welcome to TherapyHub', 'Signed in successfully (local mode).');
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  // 3. Register Brand New Patient
+  const handleRegisterPatient = async () => {
+    if (!regFullName.trim()) {
+      showToast('WARNING', 'Name Required', 'Please enter your full legal name for clinical records.');
+      return;
+    }
+    setAuthLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/auth/register-patient`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fullName: regFullName.trim(),
+          phoneNumber: authPhone,
+          email: regEmail.trim() || `${regFullName.toLowerCase().replace(/\\s+/g, '')}@therapyhub.health`,
+          addressLine: regAddress.trim() || 'Indiranagar, Bengaluru',
+          emergencyContactName: regEmergencyName.trim(),
+          emergencyContactPhone: regEmergencyPhone.trim(),
+          medicalConditions: regConditions.join(', '),
+          bloodGroup: regBloodGroup
+        })
+      });
+      const data = await res.json();
+      if (data.success && data.user) {
+        setPatientProfile(prev => ({
+          ...prev,
+          fullName: data.user.fullName,
+          phone: data.user.phoneNumber,
+          email: data.user.email,
+          bloodGroup: data.user.bloodGroup || regBloodGroup,
+          primaryAddress: regAddress.trim() || prev.primaryAddress,
+          entryNotes: regDoorNotes.trim() || prev.entryNotes,
+          emergencyName: regEmergencyName.trim() || prev.emergencyName,
+          emergencyPhone: regEmergencyPhone.trim() || prev.emergencyPhone,
+          conditions: regConditions
+        }));
+        setIsAuthenticated(true);
+        setRoleMode('PATIENT');
+        showToast('SUCCESS', '🎉 Registration Complete', `Welcome to TherapyHub, ${data.user.fullName}!`);
+        refreshActiveData();
+      } else {
+        showToast('ERROR', 'Registration Error', data.message || 'Could not register patient');
+      }
+    } catch {
+      // Local fallback
+      setPatientProfile(prev => ({
+        ...prev,
+        fullName: regFullName.trim(),
+        phone: authPhone,
+        primaryAddress: regAddress.trim() || prev.primaryAddress,
+        conditions: regConditions
+      }));
+      setIsAuthenticated(true);
+      setRoleMode('PATIENT');
+      showToast('SUCCESS', 'Registration Complete', `Welcome, ${regFullName.trim()}!`);
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  // 4. Biometric Unlock Simulation (Face ID / Fingerprint)
+  const handleBiometricUnlock = () => {
+    setBiometricModal(true);
+    setBiometricScanning(true);
+    setTimeout(() => {
+      setBiometricScanning(false);
+      setTimeout(() => {
+        setBiometricModal(false);
+        setIsAuthenticated(true);
+        setRoleMode('PATIENT');
+        showToast('SUCCESS', '🔐 Biometric Verified', 'Authenticated via Face ID / Fingerprint. Welcome back!');
+        refreshActiveData();
+      }, 500);
+    }, 1100);
+  };
+
+  // 5. Social SSO Authentication
+  const handleSsoAuth = async (provider: 'Google' | 'Apple') => {
+    setAuthLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/auth/sso`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          provider,
+          email: provider === 'Google' ? 'rajesh.sharma@gmail.com' : 'rajesh.sharma@icloud.com',
+          fullName: 'Rajesh Sharma',
+          phoneNumber: '+91 91234 56789'
+        })
+      });
+      const data = await res.json();
+      if (data.success && data.user) {
+        setPatientProfile(prev => ({
+          ...prev,
+          fullName: data.user.fullName,
+          phone: data.user.phoneNumber,
+          email: data.user.email
+        }));
+        setIsAuthenticated(true);
+        setRoleMode('PATIENT');
+        showToast('SUCCESS', `✓ Signed in with ${provider}`, `Welcome, ${data.user.fullName}!`);
+        refreshActiveData();
+      }
+    } catch {
+      setIsAuthenticated(true);
+      setRoleMode('PATIENT');
+      showToast('SUCCESS', `${provider} Sign-In`, `Logged in via ${provider} SSO.`);
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  // 6. Sign Out
+  const handleSignOut = () => {
+    setIsAuthenticated(false);
+    setAuthStep('PHONE_INPUT');
+    setAuthOtp('');
+    showToast('INFO', 'Signed Out', 'You have been safely signed out of TherapyHub.');
+  };
+
+  // 7. Clinician Quick Bypass
+  const handleClinicianLogin = () => {
+    setRoleMode('THERAPIST');
+    setIsAuthenticated(true);
+    showToast('SUCCESS', '🩺 Clinician Verified', 'Logged into Dr. Sarah Jenkins Clinician Cockpit.');
+    refreshActiveData();
   };
 
   // Save Profile Handler
@@ -568,43 +831,450 @@ export default function App() {
         </View>
       )}
       
-      {/* 1. TOP CALMING HEALTHCARE HEADER */}
-      <View style={styles.topHeader}>
-        <View style={styles.headerLeft}>
-          <View style={styles.logoBadge}>
-            <Text style={styles.logoBadgeText}>🩺</Text>
-          </View>
-          <View>
-            <View style={styles.appNameRow}>
-              <Text style={styles.brandTitle}>TherapyHub</Text>
-              <View style={styles.inHomePill}>
-                <Text style={styles.inHomePillText}>IN-HOME CARE</Text>
+      {/* ========================================================================= */}
+      {/* UNIFIED PATIENT & CLINICIAN AUTHENTICATION GATEWAY */}
+      {/* ========================================================================= */}
+      {!isAuthenticated ? (
+        <ScrollView style={styles.authScrollArea} contentContainerStyle={{ padding: 18, paddingBottom: 60 }}>
+          {/* BRAND HERO BANNER */}
+          <View style={styles.authHeroCard}>
+            <View style={styles.authHeroIconBox}>
+              <Text style={{ fontSize: 36 }}>🩺</Text>
+            </View>
+            <View style={styles.authHeroTitleRow}>
+              <Text style={styles.authHeroTitle}>TherapyHub</Text>
+              <View style={styles.authInHomePill}>
+                <Text style={styles.authInHomePillText}>IN-HOME CARE</Text>
               </View>
             </View>
-            <Text style={styles.brandSub}>Certified Home Physiotherapy</Text>
+            <Text style={styles.authHeroSubtitle}>
+              Certified In-Home Clinical Physiotherapy Platform
+            </Text>
           </View>
-        </View>
 
-        {/* ROLE TOGGLE */}
-        <View style={styles.roleToggle}>
-          <TouchableOpacity 
-            style={[styles.roleBtn, roleMode === 'PATIENT' && styles.roleBtnActive]}
-            onPress={() => setRoleMode('PATIENT')}
-          >
-            <Text style={[styles.roleBtnText, roleMode === 'PATIENT' && styles.roleBtnTextActive]}>
-              Patient
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity 
-            style={[styles.roleBtn, roleMode === 'THERAPIST' && styles.roleBtnActive]}
-            onPress={() => setRoleMode('THERAPIST')}
-          >
-            <Text style={[styles.roleBtnText, roleMode === 'THERAPIST' && styles.roleBtnTextActive]}>
-              Clinician
-            </Text>
-          </TouchableOpacity>
-        </View>
-      </View>
+          {/* AUTHENTICATION METHOD TABS */}
+          <View style={styles.authMethodTabs}>
+            <TouchableOpacity 
+              style={[styles.authMethodTab, authMethod === 'PHONE_OTP' && styles.authMethodTabActive]}
+              onPress={() => setAuthMethod('PHONE_OTP')}
+            >
+              <Text style={styles.authMethodTabIcon}>📱</Text>
+              <Text style={[styles.authMethodTabText, authMethod === 'PHONE_OTP' && styles.authMethodTabTextActive]}>
+                Phone OTP
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={[styles.authMethodTab, authMethod === 'BIOMETRIC' && styles.authMethodTabActive]}
+              onPress={() => setAuthMethod('BIOMETRIC')}
+            >
+              <Text style={styles.authMethodTabIcon}>🔐</Text>
+              <Text style={[styles.authMethodTabText, authMethod === 'BIOMETRIC' && styles.authMethodTabTextActive]}>
+                Biometric
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={[styles.authMethodTab, authMethod === 'SSO' && styles.authMethodTabActive]}
+              onPress={() => setAuthMethod('SSO')}
+            >
+              <Text style={styles.authMethodTabIcon}>🌐</Text>
+              <Text style={[styles.authMethodTabText, authMethod === 'SSO' && styles.authMethodTabTextActive]}>
+                Social SSO
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* TAB 1: PHONE OTP FLOW */}
+          {authMethod === 'PHONE_OTP' && (
+            <View style={styles.authCard}>
+              {/* STEP 1: ENTER PHONE NUMBER */}
+              {authStep === 'PHONE_INPUT' && (
+                <View>
+                  <Text style={styles.authCardTitle}>Sign In or Register</Text>
+                  <Text style={styles.authCardSubtitle}>
+                    Enter your mobile number. Patients registered over phone by DeskBoy can enter their number to instantly load their account & dispatches.
+                  </Text>
+
+                  {/* QUICK DEMO PERSONAS */}
+                  <Text style={styles.authQuickLabel}>Quick 1-Tap Personas (Developer & Demo):</Text>
+                  
+                  {/* PERSONA 1: ADMIN-CREATED PATIENT */}
+                  <TouchableOpacity 
+                    style={styles.authPersonaChip}
+                    onPress={() => {
+                      setAuthPhone('+91 91234 56789');
+                      handleRequestOtp('+91 91234 56789');
+                    }}
+                  >
+                    <View style={styles.authPersonaAvatar}>
+                      <Text style={styles.authPersonaAvatarText}>RS</Text>
+                    </View>
+                    <View style={{ flex: 1, marginLeft: 10 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                        <Text style={styles.authPersonaName}>Rajesh Sharma</Text>
+                        <View style={styles.authAdminCreatedTag}>
+                          <Text style={styles.authAdminCreatedTagText}>Admin-Created</Text>
+                        </View>
+                      </View>
+                      <Text style={styles.authPersonaPhone}>+91 91234 56789 • Pre-registered by DeskBoy</Text>
+                    </View>
+                    <Text style={styles.authPersonaArrow}>➔</Text>
+                  </TouchableOpacity>
+
+                  {/* PERSONA 2: BRAND NEW PATIENT */}
+                  <TouchableOpacity 
+                    style={[styles.authPersonaChip, { marginTop: 8 }]}
+                    onPress={() => {
+                      setAuthPhone('+91 97777 66666');
+                      handleRequestOtp('+91 97777 66666');
+                    }}
+                  >
+                    <View style={[styles.authPersonaAvatar, { backgroundColor: '#e0e7ff' }]}>
+                      <Text style={[styles.authPersonaAvatarText, { color: '#4338ca' }]}>✨</Text>
+                    </View>
+                    <View style={{ flex: 1, marginLeft: 10 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                        <Text style={styles.authPersonaName}>New Patient Registration</Text>
+                        <View style={[styles.authAdminCreatedTag, { backgroundColor: '#eef2ff', borderColor: '#c7d2fe' }]}>
+                          <Text style={[styles.authAdminCreatedTagText, { color: '#4f46e5' }]}>Self-Service</Text>
+                        </View>
+                      </View>
+                      <Text style={styles.authPersonaPhone}>+91 97777 66666 • Onboarding Flow</Text>
+                    </View>
+                    <Text style={styles.authPersonaArrow}>➔</Text>
+                  </TouchableOpacity>
+
+                  {/* PHONE NUMBER INPUT */}
+                  <Text style={[styles.authFieldLabel, { marginTop: 16 }]}>Or Enter Any Mobile Number:</Text>
+                  <View style={styles.phoneInputRow}>
+                    <View style={styles.countryCodeBadge}>
+                      <Text style={styles.countryCodeText}>🇮🇳 +91</Text>
+                    </View>
+                    <TextInput
+                      style={styles.phoneTextInput}
+                      value={authPhone}
+                      onChangeText={setAuthPhone}
+                      keyboardType="phone-pad"
+                      placeholder="91234 56789"
+                      placeholderTextColor="#94a3b8"
+                    />
+                  </View>
+
+                  <TouchableOpacity 
+                    style={styles.authPrimaryBtn}
+                    disabled={authLoading}
+                    onPress={() => handleRequestOtp()}
+                  >
+                    <Text style={styles.authPrimaryBtnText}>
+                      {authLoading ? 'Sending OTP Code...' : 'Get Verification Code →'}
+                    </Text>
+                  </TouchableOpacity>
+
+                  {/* FAST BIOMETRIC SHORTCUT BUTTON */}
+                  <TouchableOpacity 
+                    style={styles.authBioShortcutBtn}
+                    onPress={handleBiometricUnlock}
+                  >
+                    <Text style={styles.authBioShortcutText}>🔐 1-Tap Biometric Quick Sign In</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+
+              {/* STEP 2: ENTER OTP */}
+              {authStep === 'OTP_INPUT' && (
+                <View>
+                  <View style={styles.authStepHeader}>
+                    <TouchableOpacity onPress={() => setAuthStep('PHONE_INPUT')}>
+                      <Text style={styles.authBackLink}>← Change Number</Text>
+                    </TouchableOpacity>
+                    <Text style={styles.authStepCounter}>Step 2 of 2</Text>
+                  </View>
+
+                  <Text style={styles.authCardTitle}>Enter 4-Digit OTP</Text>
+                  <Text style={styles.authCardSubtitle}>
+                    Verification code sent to <Text style={{ fontWeight: 'bold', color: '#0f172a' }}>{authPhone}</Text>.
+                  </Text>
+
+                  {/* AUTO-FILL 1234 BANNER */}
+                  <View style={styles.fixedOtpBox}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.fixedOtpLabel}>Test Verification Code</Text>
+                      <Text style={styles.fixedOtpCode}>1234</Text>
+                    </View>
+                    <TouchableOpacity 
+                      style={styles.fixedOtpFillBtn}
+                      onPress={() => {
+                        setAuthOtp('1234');
+                        handleVerifyOtp('1234');
+                      }}
+                    >
+                      <Text style={styles.fixedOtpFillBtnText}>⚡ Auto-Fill & Verify</Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  <TextInput
+                    style={styles.otpLargeInput}
+                    value={authOtp}
+                    onChangeText={setAuthOtp}
+                    keyboardType="number-pad"
+                    maxLength={4}
+                    placeholder="1234"
+                    placeholderTextColor="#94a3b8"
+                  />
+
+                  <TouchableOpacity 
+                    style={styles.authPrimaryBtn}
+                    disabled={authLoading}
+                    onPress={() => handleVerifyOtp()}
+                  >
+                    <Text style={styles.authPrimaryBtnText}>
+                      {authLoading ? 'Verifying OTP...' : 'Verify & Enter TherapyHub ➔'}
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity 
+                    style={styles.resendBtn}
+                    onPress={() => handleRequestOtp()}
+                  >
+                    <Text style={styles.resendBtnText}>Resend SMS Code (1234)</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+
+              {/* STEP 3: PATIENT ONBOARDING (NEW USERS) */}
+              {authStep === 'PROFILE_SETUP' && (
+                <View>
+                  <View style={styles.authStepHeader}>
+                    <TouchableOpacity onPress={() => setAuthStep('PHONE_INPUT')}>
+                      <Text style={styles.authBackLink}>← Back</Text>
+                    </TouchableOpacity>
+                    <Text style={styles.authStepCounter}>Patient Onboarding</Text>
+                  </View>
+
+                  <Text style={styles.authCardTitle}>Complete Patient Profile 🎉</Text>
+                  <Text style={styles.authCardSubtitle}>
+                    Your phone <Text style={{ fontWeight: 'bold' }}>{authPhone}</Text> is verified. Fill your details to schedule visiting physiotherapists:
+                  </Text>
+
+                  <Text style={styles.authFieldLabel}>Full Legal Name *</Text>
+                  <TextInput
+                    style={styles.authTextInput}
+                    value={regFullName}
+                    onChangeText={setRegFullName}
+                    placeholder="e.g. Ramesh Chandra"
+                    placeholderTextColor="#94a3b8"
+                  />
+
+                  <Text style={styles.authFieldLabel}>Email Address</Text>
+                  <TextInput
+                    style={styles.authTextInput}
+                    value={regEmail}
+                    onChangeText={setRegEmail}
+                    keyboardType="email-address"
+                    placeholder="ramesh.chandra@example.com"
+                    placeholderTextColor="#94a3b8"
+                  />
+
+                  <Text style={styles.authFieldLabel}>Home Address (For In-Home Dispatches) *</Text>
+                  <TextInput
+                    style={styles.authTextInput}
+                    value={regAddress}
+                    onChangeText={setRegAddress}
+                    placeholder="Flat / Villa number, Apartment Name, Street, Bengaluru"
+                    placeholderTextColor="#94a3b8"
+                  />
+
+                  <Text style={styles.authFieldLabel}>Door Buzzer / Elevator Notes</Text>
+                  <TextInput
+                    style={styles.authTextInput}
+                    value={regDoorNotes}
+                    onChangeText={setRegDoorNotes}
+                    placeholder="Door buzzer #, Tower B, Lift location"
+                    placeholderTextColor="#94a3b8"
+                  />
+
+                  <Text style={styles.authFieldLabel}>Blood Group</Text>
+                  <View style={styles.regPillRow}>
+                    {BLOOD_GROUPS.map(bg => (
+                      <TouchableOpacity 
+                        key={bg}
+                        style={[styles.regBgPill, regBloodGroup === bg && styles.regBgPillActive]}
+                        onPress={() => setRegBloodGroup(bg)}
+                      >
+                        <Text style={[styles.regBgPillText, regBloodGroup === bg && styles.regBgPillTextActive]}>
+                          {bg}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+
+                  <Text style={styles.authFieldLabel}>Pre-existing Medical Precautions</Text>
+                  <View style={styles.regChipWrap}>
+                    {CHRONIC_CONDITIONS.map(cond => {
+                      const sel = regConditions.includes(cond);
+                      return (
+                        <TouchableOpacity
+                          key={cond}
+                          style={[styles.regCondChip, sel && styles.regCondChipActive]}
+                          onPress={() => toggleRegCondition(cond)}
+                        >
+                          <Text style={[styles.regCondChipText, sel && styles.regCondChipTextActive]}>
+                            {cond}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+
+                  <Text style={styles.authFieldLabel}>Emergency Contact Name</Text>
+                  <TextInput
+                    style={styles.authTextInput}
+                    value={regEmergencyName}
+                    onChangeText={setRegEmergencyName}
+                    placeholder="Spouse / Relative Name"
+                    placeholderTextColor="#94a3b8"
+                  />
+
+                  <Text style={styles.authFieldLabel}>Emergency Contact Phone</Text>
+                  <TextInput
+                    style={styles.authTextInput}
+                    value={regEmergencyPhone}
+                    onChangeText={setRegEmergencyPhone}
+                    keyboardType="phone-pad"
+                    placeholder="+91 98765 43210"
+                    placeholderTextColor="#94a3b8"
+                  />
+
+                  <TouchableOpacity 
+                    style={[styles.authPrimaryBtn, { marginTop: 18 }]}
+                    disabled={authLoading}
+                    onPress={handleRegisterPatient}
+                  >
+                    <Text style={styles.authPrimaryBtnText}>
+                      {authLoading ? 'Creating Account...' : 'Complete Profile & Start Care ➔'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+            </View>
+          )}
+
+          {/* TAB 2: BIOMETRIC LOGIN */}
+          {authMethod === 'BIOMETRIC' && (
+            <View style={styles.authCard}>
+              <View style={styles.bioGraphicBox}>
+                <View style={styles.bioPulseRing}>
+                  <Text style={{ fontSize: 56 }}>🪪</Text>
+                </View>
+              </View>
+              <Text style={[styles.authCardTitle, { textAlign: 'center' }]}>1-Tap Biometric Unlock</Text>
+              <Text style={[styles.authCardSubtitle, { textAlign: 'center' }]}>
+                Authenticate instantly using your device's built-in Face ID or Touch ID biometric sensors. Zero passwords needed.
+              </Text>
+
+              <TouchableOpacity 
+                style={styles.authBioBigBtn}
+                onPress={handleBiometricUnlock}
+              >
+                <Text style={styles.authBioBigBtnText}>🔐 Scan Face ID / Fingerprint</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity 
+                style={styles.authTextBtn}
+                onPress={() => setAuthMethod('PHONE_OTP')}
+              >
+                <Text style={styles.authTextBtnLabel}>Switch to Phone OTP Login</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
+          {/* TAB 3: SOCIAL SSO */}
+          {authMethod === 'SSO' && (
+            <View style={styles.authCard}>
+              <Text style={styles.authCardTitle}>Single Sign-On (SSO)</Text>
+              <Text style={styles.authCardSubtitle}>
+                Sign in with your verified Google or Apple account.
+              </Text>
+
+              <TouchableOpacity 
+                style={styles.ssoGoogleBtn}
+                onPress={() => handleSsoAuth('Google')}
+              >
+                <Text style={styles.ssoGoogleIcon}>G</Text>
+                <Text style={styles.ssoGoogleText}>Continue with Google</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity 
+                style={styles.ssoAppleBtn}
+                onPress={() => handleSsoAuth('Apple')}
+              >
+                <Text style={styles.ssoAppleIcon}></Text>
+                <Text style={styles.ssoAppleText}>Continue with Apple</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity 
+                style={[styles.authTextBtn, { marginTop: 12 }]}
+                onPress={() => setAuthMethod('PHONE_OTP')}
+              >
+                <Text style={styles.authTextBtnLabel}>Switch to Phone OTP Login</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
+          {/* CLINICIAN QUICK ACCESS FOOTER */}
+          <View style={styles.authClinicianFooter}>
+            <Text style={styles.authClinicianFooterText}>Licensed Healthcare Provider?</Text>
+            <TouchableOpacity onPress={handleClinicianLogin}>
+              <Text style={styles.authClinicianLink}>Access Clinician Cockpit →</Text>
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
+      ) : (
+        <>
+          {/* 1. TOP CALMING HEALTHCARE HEADER */}
+          <View style={styles.topHeader}>
+            <View style={styles.headerLeft}>
+              <View style={styles.logoBadge}>
+                <Text style={styles.logoBadgeText}>🩺</Text>
+              </View>
+              <View>
+                <View style={styles.appNameRow}>
+                  <Text style={styles.brandTitle}>TherapyHub</Text>
+                  <View style={styles.inHomePill}>
+                    <Text style={styles.inHomePillText}>IN-HOME CARE</Text>
+                  </View>
+                </View>
+                <Text style={styles.brandSub}>Certified Home Physiotherapy</Text>
+              </View>
+            </View>
+
+            {/* ROLE TOGGLE & LOGOUT */}
+            <View style={styles.roleToggle}>
+              <TouchableOpacity 
+                style={[styles.roleBtn, roleMode === 'PATIENT' && styles.roleBtnActive]}
+                onPress={() => setRoleMode('PATIENT')}
+              >
+                <Text style={[styles.roleBtnText, roleMode === 'PATIENT' && styles.roleBtnTextActive]}>
+                  Patient
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={[styles.roleBtn, roleMode === 'THERAPIST' && styles.roleBtnActive]}
+                onPress={() => setRoleMode('THERAPIST')}
+              >
+                <Text style={[styles.roleBtnText, roleMode === 'THERAPIST' && styles.roleBtnTextActive]}>
+                  Clinician
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={styles.headerLogoutBtn}
+                onPress={handleSignOut}
+              >
+                <Text style={styles.headerLogoutText}>🚪</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
 
       {/* 2. PATIENT EXPERIENCE */}
       {roleMode === 'PATIENT' && (
@@ -1303,6 +1973,11 @@ export default function App() {
               <TouchableOpacity style={styles.saveProfileBtn} onPress={handleSaveProfile}>
                 <Text style={styles.saveProfileBtnText}>💾 Save Personal & Medical Details</Text>
               </TouchableOpacity>
+
+              {/* SIGN OUT / SWITCH ACCOUNT BUTTON */}
+              <TouchableOpacity style={styles.signOutBtn} onPress={handleSignOut}>
+                <Text style={styles.signOutBtnText}>🚪 Sign Out / Switch Account</Text>
+              </TouchableOpacity>
             </ScrollView>
           )}
         </View>
@@ -1480,10 +2155,51 @@ export default function App() {
                 placeholderTextColor="#94a3b8"
                 multiline
               />
+              {/* CLINICIAN SIGN OUT BUTTON */}
+              <TouchableOpacity style={[styles.signOutBtn, { marginTop: 24 }]} onPress={handleSignOut}>
+                <Text style={styles.signOutBtnText}>🚪 Sign Out (Clinician)</Text>
+              </TouchableOpacity>
             </View>
           )}
         </ScrollView>
       )}
+    </>
+  )}
+
+  {/* ========================================================================= */}
+  {/* 0. BIOMETRIC AUTHENTICATION SIMULATION MODAL */}
+  {/* ========================================================================= */}
+  <Modal
+    visible={biometricModal}
+    transparent
+    animationType="fade"
+    onRequestClose={() => {
+      if (!biometricScanning) setBiometricModal(false);
+    }}
+  >
+    <View style={styles.modalOverlay}>
+      <View style={[styles.modalCard, { alignItems: 'center', paddingVertical: 28 }]}>
+        <View style={[styles.biometricIconCircle, biometricScanning ? styles.biometricPulse : styles.biometricSuccess]}>
+          <Text style={{ fontSize: 44 }}>{biometricScanning ? '🪪' : '✅'}</Text>
+        </View>
+        <Text style={styles.biometricHeadline}>
+          {biometricScanning ? 'Biometric Sensor Active' : 'Biometric Identity Verified!'}
+        </Text>
+        <Text style={styles.biometricSub}>
+          {biometricScanning 
+            ? 'Scanning Face ID / Fingerprint sensor...' 
+            : 'Welcome back to TherapyHub, Rajesh Sharma'}
+        </Text>
+        {biometricScanning && (
+          <View style={styles.biometricProgressRow}>
+            <View style={styles.biometricDotActive} />
+            <View style={styles.biometricDotActive} />
+            <View style={styles.biometricDotActive} />
+          </View>
+        )}
+      </View>
+    </View>
+  </Modal>
 
       {/* ========================================================================= */}
       {/* 1. CONFIRM COMPLETE SESSION MODAL */}
@@ -3786,6 +4502,564 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: '#64748b',
     flex: 1,
+  },
+
+  // HEADER LOGOUT BUTTON
+  headerLogoutBtn: {
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    marginLeft: 4,
+    borderRadius: 8,
+    backgroundColor: '#f1f5f9',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerLogoutText: {
+    fontSize: 14,
+  },
+
+  // SIGN OUT BUTTON
+  signOutBtn: {
+    backgroundColor: '#fff1f2',
+    borderWidth: 1.5,
+    borderColor: '#fecdd3',
+    borderRadius: 14,
+    paddingVertical: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 14,
+  },
+  signOutBtnText: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#e11d48',
+  },
+
+  // AUTHENTICATION GATEWAY STYLES
+  authScrollArea: {
+    flex: 1,
+    backgroundColor: '#f8fafc',
+  },
+  authHeroCard: {
+    backgroundColor: '#0f766e',
+    borderRadius: 20,
+    padding: 22,
+    alignItems: 'center',
+    marginBottom: 16,
+    shadowColor: '#0f766e',
+    shadowOpacity: 0.25,
+    shadowRadius: 12,
+    elevation: 6,
+  },
+  authHeroIconBox: {
+    width: 68,
+    height: 68,
+    borderRadius: 34,
+    backgroundColor: '#ffffff',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  authHeroTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 4,
+  },
+  authHeroTitle: {
+    fontSize: 24,
+    fontWeight: '900',
+    color: '#ffffff',
+    letterSpacing: 0.5,
+  },
+  authInHomePill: {
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  authInHomePillText: {
+    fontSize: 10,
+    fontWeight: '900',
+    color: '#ffffff',
+    letterSpacing: 0.5,
+  },
+  authHeroSubtitle: {
+    fontSize: 13,
+    color: '#ccfbf1',
+    textAlign: 'center',
+    lineHeight: 18,
+    marginTop: 2,
+    maxWidth: 280,
+  },
+  authMethodTabs: {
+    flexDirection: 'row',
+    backgroundColor: '#e2e8f0',
+    borderRadius: 14,
+    padding: 4,
+    marginBottom: 16,
+    gap: 4,
+  },
+  authMethodTab: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    borderRadius: 10,
+    gap: 5,
+  },
+  authMethodTabActive: {
+    backgroundColor: '#ffffff',
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  authMethodTabIcon: {
+    fontSize: 14,
+  },
+  authMethodTabText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#64748b',
+  },
+  authMethodTabTextActive: {
+    color: '#0f766e',
+    fontWeight: '800',
+  },
+  authCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 20,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    shadowColor: '#64748b',
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    elevation: 3,
+  },
+  authCardTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#0f172a',
+    marginBottom: 4,
+  },
+  authCardSubtitle: {
+    fontSize: 13,
+    color: '#64748b',
+    lineHeight: 19,
+    marginBottom: 16,
+  },
+  authQuickLabel: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#0f766e',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 8,
+  },
+  authPersonaChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f0fdfa',
+    borderWidth: 1.5,
+    borderColor: '#99f6e4',
+    borderRadius: 14,
+    padding: 12,
+  },
+  authPersonaAvatar: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: '#ccfbf1',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  authPersonaAvatarText: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#0f766e',
+  },
+  authPersonaName: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#0f172a',
+    marginRight: 6,
+  },
+  authAdminCreatedTag: {
+    backgroundColor: '#fef3c7',
+    borderWidth: 1,
+    borderColor: '#fde68a',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  authAdminCreatedTagText: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#b45309',
+  },
+  authPersonaPhone: {
+    fontSize: 11,
+    color: '#0d9488',
+    marginTop: 2,
+    fontWeight: '600',
+  },
+  authPersonaArrow: {
+    fontSize: 16,
+    color: '#0f766e',
+    fontWeight: 'bold',
+  },
+  authFieldLabel: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#334155',
+    marginBottom: 6,
+  },
+  phoneInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 16,
+  },
+  countryCodeBadge: {
+    backgroundColor: '#f1f5f9',
+    borderWidth: 1.5,
+    borderColor: '#cbd5e1',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 13,
+  },
+  countryCodeText: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#0f172a',
+  },
+  phoneTextInput: {
+    flex: 1,
+    backgroundColor: '#ffffff',
+    borderWidth: 1.5,
+    borderColor: '#cbd5e1',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#0f172a',
+  },
+  authPrimaryBtn: {
+    backgroundColor: '#0d9488',
+    borderRadius: 14,
+    paddingVertical: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#0d9488',
+    shadowOpacity: 0.2,
+    shadowRadius: 6,
+    elevation: 3,
+  },
+  authPrimaryBtnText: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#ffffff',
+  },
+  authBioShortcutBtn: {
+    backgroundColor: '#f8fafc',
+    borderWidth: 1.5,
+    borderColor: '#e2e8f0',
+    borderRadius: 14,
+    paddingVertical: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 12,
+  },
+  authBioShortcutText: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#0f766e',
+  },
+  authStepHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  authBackLink: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#0d9488',
+  },
+  authStepCounter: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#94a3b8',
+    textTransform: 'uppercase',
+  },
+  fixedOtpBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#eff6ff',
+    borderWidth: 1.5,
+    borderColor: '#bfdbfe',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 16,
+  },
+  fixedOtpLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#1d4ed8',
+  },
+  fixedOtpCode: {
+    fontSize: 18,
+    fontWeight: '900',
+    color: '#1e40af',
+    letterSpacing: 2,
+  },
+  fixedOtpFillBtn: {
+    backgroundColor: '#2563eb',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+  },
+  fixedOtpFillBtnText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#ffffff',
+  },
+  otpLargeInput: {
+    backgroundColor: '#f8fafc',
+    borderWidth: 2,
+    borderColor: '#0d9488',
+    borderRadius: 16,
+    paddingVertical: 14,
+    fontSize: 26,
+    fontWeight: '900',
+    color: '#0f172a',
+    textAlign: 'center',
+    letterSpacing: 10,
+    marginBottom: 16,
+  },
+  resendBtn: {
+    alignItems: 'center',
+    marginTop: 14,
+  },
+  resendBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#64748b',
+  },
+  authTextInput: {
+    backgroundColor: '#f8fafc',
+    borderWidth: 1.5,
+    borderColor: '#e2e8f0',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#0f172a',
+    marginBottom: 12,
+  },
+  regPillRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 14,
+  },
+  regBgPill: {
+    backgroundColor: '#f1f5f9',
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  regBgPillActive: {
+    backgroundColor: '#ccfbf1',
+    borderColor: '#0d9488',
+  },
+  regBgPillText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#475569',
+  },
+  regBgPillTextActive: {
+    color: '#0f766e',
+    fontWeight: '900',
+  },
+  regChipWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 14,
+  },
+  regCondChip: {
+    backgroundColor: '#f8fafc',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  regCondChipActive: {
+    backgroundColor: '#fef3c7',
+    borderColor: '#f59e0b',
+  },
+  regCondChipText: {
+    fontSize: 11,
+    color: '#475569',
+    fontWeight: '600',
+  },
+  regCondChipTextActive: {
+    color: '#92400e',
+    fontWeight: '800',
+  },
+  bioGraphicBox: {
+    alignItems: 'center',
+    marginVertical: 20,
+  },
+  bioPulseRing: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    backgroundColor: '#ccfbf1',
+    borderWidth: 2,
+    borderColor: '#2dd4bf',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  authBioBigBtn: {
+    backgroundColor: '#0f766e',
+    borderRadius: 14,
+    paddingVertical: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 8,
+    shadowColor: '#0f766e',
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  authBioBigBtnText: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#ffffff',
+  },
+  authTextBtn: {
+    alignItems: 'center',
+    paddingVertical: 12,
+    marginTop: 8,
+  },
+  authTextBtnLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#0d9488',
+  },
+  ssoGoogleBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#ffffff',
+    borderWidth: 1.5,
+    borderColor: '#cbd5e1',
+    borderRadius: 14,
+    paddingVertical: 13,
+    marginBottom: 10,
+    gap: 10,
+  },
+  ssoGoogleIcon: {
+    fontSize: 18,
+    fontWeight: '900',
+    color: '#ea4335',
+  },
+  ssoGoogleText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#1e293b',
+  },
+  ssoAppleBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#000000',
+    borderRadius: 14,
+    paddingVertical: 13,
+    gap: 8,
+  },
+  ssoAppleIcon: {
+    fontSize: 18,
+    color: '#ffffff',
+  },
+  ssoAppleText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#ffffff',
+  },
+  authClinicianFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 22,
+    gap: 6,
+  },
+  authClinicianFooterText: {
+    fontSize: 12,
+    color: '#64748b',
+  },
+  authClinicianLink: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#0f766e',
+  },
+  biometricIconCircle: {
+    width: 84,
+    height: 84,
+    borderRadius: 42,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+  biometricPulse: {
+    backgroundColor: '#f0fdfa',
+    borderWidth: 2,
+    borderColor: '#2dd4bf',
+  },
+  biometricSuccess: {
+    backgroundColor: '#ecfdf5',
+    borderWidth: 2,
+    borderColor: '#10b981',
+  },
+  biometricHeadline: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#0f172a',
+    marginBottom: 6,
+    textAlign: 'center',
+  },
+  biometricSub: {
+    fontSize: 12,
+    color: '#64748b',
+    textAlign: 'center',
+    lineHeight: 18,
+    maxWidth: 260,
+    marginBottom: 12,
+  },
+  biometricProgressRow: {
+    flexDirection: 'row',
+    gap: 6,
+    marginTop: 8,
+  },
+  biometricDotActive: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#0d9488',
   },
 });
 
