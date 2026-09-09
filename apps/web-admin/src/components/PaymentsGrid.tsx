@@ -21,12 +21,14 @@ export interface PaymentsGridProps {
   appointments: Appointment[];
   onRefresh: () => void;
   onSettlePayment: (appointmentId: string, mode: 'CASH' | 'UPI') => void;
+  onResetPayment?: (appointmentId: string) => void;
 }
 
 export const PaymentsGrid: React.FC<PaymentsGridProps> = ({
   appointments,
   onRefresh,
-  onSettlePayment
+  onSettlePayment,
+  onResetPayment
 }) => {
   // Filter States
   const [searchQuery, setSearchQuery] = useState('');
@@ -494,10 +496,21 @@ export const PaymentsGrid: React.FC<PaymentsGridProps> = ({
                       </td>
                       <td className="p-4 text-right whitespace-nowrap">
                         {paymentStatus === 'SETTLED' ? (
-                          <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200 inline-flex items-center">
-                            <CheckCircle2 className="w-3.5 h-3.5 mr-1" />
-                            <span>Paid</span>
-                          </span>
+                          <div className="inline-flex items-center space-x-1.5">
+                            <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200 inline-flex items-center">
+                              <CheckCircle2 className="w-3.5 h-3.5 mr-1" />
+                              <span>Paid</span>
+                            </span>
+                            {onResetPayment && (
+                              <button
+                                onClick={() => onResetPayment(apt.id)}
+                                className="text-[10px] font-semibold text-slate-400 hover:text-amber-700 hover:bg-amber-50 px-2 py-1 rounded border border-slate-200 transition"
+                                title="Reset status to Pending"
+                              >
+                                Mark Pending
+                              </button>
+                            )}
+                          </div>
                         ) : (
                           <div className="inline-flex items-center space-x-1.5">
                             <button

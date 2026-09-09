@@ -182,7 +182,7 @@ public class AppointmentsController : ControllerBase
             Tax = fee.Tax,
             TotalFee = fee.TotalFee,
             PaymentMode = paymentMode,
-            PaymentStatus = PaymentStatus.AUTHORIZED,
+            PaymentStatus = PaymentStatus.PENDING,
             ClinicalNotes = $"Initial booking: {request.ChiefComplaint}",
             CreatedAt = DateTime.UtcNow
         };
@@ -323,6 +323,38 @@ public class AppointmentsController : ControllerBase
         await _hubContext.Clients.Group($"appointment_{appointment.Id}").SendAsync("ReceivePaymentSettled", payload);
 
         return Ok(new { success = true, message = "Payment successfully settled.", appointment });
+    }
+
+    [HttpPost("{id}/reset-payment")]
+    public async Task<IActionResult> ResetPayment(string id)
+    {
+        var appointment = await _context.Appointments
+            .Include(a => a.Patient)
+            .FirstOrDefaultAsync(a => a.Id == id);
+
+        if (appointment == null)
+        {
+            return NotFound(new { message = $"Appointment with ID '{id}' not found." });
+        }
+
+        appointment.PaymentStatus = PaymentStatus.PENDING;
+        await _context.SaveChangesAsync();
+        _logger.LogInformation("Appointment {AppointmentId} payment status reset to PENDING", appointment.Id);
+
+        var payload = new
+        {
+            appointmentId = appointment.Id,
+            paymentStatus = PaymentStatus.PENDING.ToString(),
+            paymentMode = appointment.PaymentMode.ToString(),
+            totalFee = appointment.TotalFee,
+            updatedAt = DateTime.UtcNow
+        };
+
+        await _hubContext.Clients.Group("dispatch_desk").SendAsync("ReceivePaymentReset", payload);
+        await _hubContext.Clients.Group($"patient_{appointment.PatientId}").SendAsync("ReceivePaymentReset", payload);
+        await _hubContext.Clients.Group($"appointment_{appointment.Id}").SendAsync("ReceivePaymentReset", payload);
+
+        return Ok(new { success = true, message = "Payment status reset to PENDING.", appointment });
     }
 
     [HttpPost("{id}/complete")]

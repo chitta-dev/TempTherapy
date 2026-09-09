@@ -22,15 +22,18 @@ export interface PendingTriageGridProps {
   requests: ServiceRequest[];
   categories: CategoryItem[];
   onRefresh: () => void;
-  onDispatchClinician: (request: ServiceRequest) => void;
+  onDispatchTherapist?: (request: ServiceRequest) => void;
+  onDispatchClinician?: (request: ServiceRequest) => void;
 }
 
 export const PendingTriageGrid: React.FC<PendingTriageGridProps> = ({
   requests,
   categories,
   onRefresh,
+  onDispatchTherapist,
   onDispatchClinician
 }) => {
+  const handleDispatch = onDispatchTherapist || onDispatchClinician || (() => {});
   // Filter States
   const [searchQuery, setSearchQuery] = useState('');
   const [urgencyFilter, setUrgencyFilter] = useState('ALL');
@@ -166,7 +169,7 @@ export const PendingTriageGrid: React.FC<PendingTriageGridProps> = ({
             </span>
           </h2>
           <p className="text-xs text-slate-500 mt-0.5">
-            Review incoming clinical therapy requests, triage urgency, and assign certified clinicians.
+            Review incoming clinical therapy requests, triage urgency, and assign certified therapists.
           </p>
         </div>
 
@@ -340,7 +343,7 @@ export const PendingTriageGrid: React.FC<PendingTriageGridProps> = ({
                         <p className="text-xs text-slate-400">
                           {isFiltered 
                             ? 'No incoming triage requests match your active filters.'
-                            : 'All incoming patient requests have been scheduled and assigned to clinicians.'}
+                            : 'All incoming patient requests have been scheduled and assigned to therapists.'}
                         </p>
                         {isFiltered && (
                           <button
@@ -412,10 +415,10 @@ export const PendingTriageGrid: React.FC<PendingTriageGridProps> = ({
                         </td>
                         <td className="p-4 text-right whitespace-nowrap">
                           <button
-                            onClick={() => onDispatchClinician(req)}
+                            onClick={() => handleDispatch(req)}
                             className="bg-teal-600 hover:bg-teal-700 active:bg-teal-800 text-white px-3.5 py-1.5 rounded-xl text-xs font-bold transition shadow-xs inline-flex items-center space-x-1"
                           >
-                            <span>Dispatch Clinician</span>
+                            <span>Dispatch Therapist</span>
                             <ArrowRight className="w-3.5 h-3.5" />
                           </button>
                         </td>
@@ -503,10 +506,10 @@ export const PendingTriageGrid: React.FC<PendingTriageGridProps> = ({
                       <span className="text-base font-black text-teal-800">₹{price}.00</span>
                     </div>
                     <button
-                      onClick={() => onDispatchClinician(req)}
+                      onClick={() => handleDispatch(req)}
                       className="bg-teal-600 hover:bg-teal-700 active:bg-teal-800 text-white px-4 py-2 rounded-xl text-xs font-bold transition shadow-xs flex items-center space-x-1.5"
                     >
-                      <span>Dispatch Clinician ➔</span>
+                      <span>Dispatch Therapist ➔</span>
                     </button>
                   </div>
                 </div>

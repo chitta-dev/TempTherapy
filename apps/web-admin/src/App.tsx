@@ -473,6 +473,24 @@ export default function App() {
     }
   };
 
+  // Handle Resetting Payment to PENDING
+  const handleResetPayment = async (appointmentId: string) => {
+    try {
+      const res = await fetch(`${API_BASE}/appointments/${appointmentId}/reset-payment`, {
+        method: 'POST'
+      });
+      const data = await res.json();
+      if (res.ok) {
+        showToast('Payment status marked as PENDING.', 'info');
+        fetchData();
+      } else {
+        showToast(data.message || 'Failed to reset payment', 'error');
+      }
+    } catch {
+      showToast('Error resetting payment.', 'error');
+    }
+  };
+
   // Handle Creating New User (Admin Only)
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1593,7 +1611,7 @@ export default function App() {
             }`}>
               {appointments.filter((a: any) => a.paymentStatus === 'PENDING').length > 0 
                 ? `${appointments.filter((a: any) => a.paymentStatus === 'PENDING').length} Pending`
-                : `${appointments.length} Settled`}
+                : `${appointments.filter((a: any) => a.paymentStatus === 'SETTLED').length} Settled`}
             </span>
           </button>
 
@@ -1658,6 +1676,7 @@ export default function App() {
             therapists={therapists}
             onRefresh={fetchData}
             onSettlePayment={handleDeskSettlePayment}
+            onResetPayment={handleResetPayment}
           />
         )}
 
@@ -1667,6 +1686,7 @@ export default function App() {
             appointments={appointments}
             onRefresh={fetchData}
             onSettlePayment={handleDeskSettlePayment}
+            onResetPayment={handleResetPayment}
           />
         )}
 

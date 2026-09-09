@@ -23,13 +23,15 @@ export interface ActiveDispatchesGridProps {
   therapists: TherapistProfile[];
   onRefresh: () => void;
   onSettlePayment: (appointmentId: string, mode: 'CASH' | 'UPI') => void;
+  onResetPayment?: (appointmentId: string) => void;
 }
 
 export const ActiveDispatchesGrid: React.FC<ActiveDispatchesGridProps> = ({
   appointments,
   therapists,
   onRefresh,
-  onSettlePayment
+  onSettlePayment,
+  onResetPayment
 }) => {
   // Filter States
   const [searchQuery, setSearchQuery] = useState('');
@@ -175,7 +177,7 @@ export const ActiveDispatchesGrid: React.FC<ActiveDispatchesGridProps> = ({
             </span>
           </h2>
           <p className="text-xs text-slate-500 mt-0.5">
-            Monitor live home visit statuses, clinician transit, clinical completion, and fee collection in Rupees (₹).
+            Monitor live home visit statuses, therapist transit, clinical completion, and fee collection in Rupees (₹).
           </p>
         </div>
 
@@ -220,7 +222,7 @@ export const ActiveDispatchesGrid: React.FC<ActiveDispatchesGridProps> = ({
             <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
             <input
               type="text"
-              placeholder="Search patient, clinician, address, ID..."
+              placeholder="Search patient, therapist, address, ID..."
               value={searchQuery}
               onChange={(e) => {
                 setSearchQuery(e.target.value);
@@ -262,7 +264,7 @@ export const ActiveDispatchesGrid: React.FC<ActiveDispatchesGridProps> = ({
             <option value="SETTLED">Paid & Settled</option>
           </select>
 
-          {/* Clinician Filter */}
+          {/* Therapist Filter */}
           {therapists.length > 0 && (
             <select
               value={therapistFilter}
@@ -272,7 +274,7 @@ export const ActiveDispatchesGrid: React.FC<ActiveDispatchesGridProps> = ({
               }}
               className="border border-slate-200 rounded-xl px-3 py-1.5 text-xs font-semibold text-slate-700 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500"
             >
-              <option value="ALL">All Clinicians</option>
+              <option value="ALL">All Therapists</option>
               {therapists.map(t => (
                 <option key={t.id} value={t.id}>
                   {t.user?.fullName || t.licenseNumber}
@@ -322,7 +324,7 @@ export const ActiveDispatchesGrid: React.FC<ActiveDispatchesGridProps> = ({
                     onSort={handleSort}
                   />
                   <TableSortHeader
-                    label="Assigned Clinician"
+                    label="Assigned Therapist"
                     field="therapistName"
                     currentSortField={sortField}
                     currentSortDirection={sortDirection}
@@ -436,10 +438,21 @@ export const ActiveDispatchesGrid: React.FC<ActiveDispatchesGridProps> = ({
                         </td>
                         <td className="p-4 text-right whitespace-nowrap">
                           {paymentStatus === 'SETTLED' ? (
-                            <span className="inline-flex items-center text-emerald-700 font-bold text-xs">
-                              <CheckCircle2 className="w-4 h-4 mr-1 text-emerald-600" />
-                              <span>Paid ({apt.paymentMode || 'CASH'})</span>
-                            </span>
+                            <div className="inline-flex items-center space-x-1.5">
+                              <span className="inline-flex items-center text-emerald-700 font-bold text-xs">
+                                <CheckCircle2 className="w-4 h-4 mr-1 text-emerald-600" />
+                                <span>Paid ({apt.paymentMode || 'CASH'})</span>
+                              </span>
+                              {onResetPayment && (
+                                <button
+                                  onClick={() => onResetPayment(apt.id)}
+                                  className="text-[10px] font-semibold text-slate-400 hover:text-amber-700 hover:bg-amber-50 px-1.5 py-0.5 rounded border border-slate-200 transition"
+                                  title="Reset status to Pending"
+                                >
+                                  Undo
+                                </button>
+                              )}
+                            </div>
                           ) : (
                             <div className="inline-flex items-center space-x-1.5">
                               <button
@@ -527,7 +540,7 @@ export const ActiveDispatchesGrid: React.FC<ActiveDispatchesGridProps> = ({
                     </div>
 
                     <div className="space-y-1">
-                      <span className="text-slate-400 font-bold uppercase text-[10px] block">Assigned Clinician</span>
+                      <span className="text-slate-400 font-bold uppercase text-[10px] block">Assigned Therapist</span>
                       <p className="font-bold text-slate-900 text-sm">{therapistName}</p>
                       <p className="text-slate-500">License: {apt.therapist?.licenseNumber || 'PT-IND-9204'}</p>
                       <p className="text-teal-700 font-bold">Fixed Discharge OTP: 8844</p>
@@ -537,9 +550,20 @@ export const ActiveDispatchesGrid: React.FC<ActiveDispatchesGridProps> = ({
                     <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200/80 space-y-2">
                       <span className="text-slate-500 font-bold uppercase text-[10px] block">Front-Desk Payment Settlement</span>
                       {paymentStatus === 'SETTLED' ? (
-                        <div className="text-emerald-700 font-bold flex items-center space-x-1 text-xs">
-                          <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                          <span>Paid & Settled (₹{totalFee}.00 via {apt.paymentMode || 'CASH'})</span>
+                        <div className="flex items-center justify-between text-emerald-700 font-bold text-xs">
+                          <div className="flex items-center space-x-1">
+                            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                            <span>Paid & Settled (₹{totalFee}.00 via {apt.paymentMode || 'CASH'})</span>
+                          </div>
+                          {onResetPayment && (
+                            <button
+                              onClick={() => onResetPayment(apt.id)}
+                              className="text-[10px] font-semibold text-slate-400 hover:text-amber-700 hover:bg-amber-50 px-2 py-0.5 rounded border border-slate-200 transition shrink-0 ml-2"
+                              title="Reset status to Pending"
+                            >
+                              Mark Pending
+                            </button>
+                          )}
                         </div>
                       ) : (
                         <div className="space-y-2">

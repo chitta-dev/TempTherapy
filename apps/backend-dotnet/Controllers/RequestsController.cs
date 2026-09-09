@@ -253,7 +253,7 @@ public class RequestsController : ControllerBase
                 Tax = fee.Tax,
                 TotalFee = fee.TotalFee,
                 PaymentMode = paymentMode,
-                PaymentStatus = PaymentStatus.AUTHORIZED,
+                PaymentStatus = PaymentStatus.PENDING,
                 ClinicalNotes = $"Direct intake & dispatch: {newRequest.ChiefComplaint}",
                 CreatedAt = DateTime.UtcNow
             };
